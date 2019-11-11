@@ -1,0 +1,35 @@
+{
+  "name": "zk-optimistic-rollup",
+  "version": "0.0.1",
+  "description": "Private token pool with optimistic rollup for zero knowledge transfer",
+  "main": "index.js",
+  "dependencies": {
+    "circom": "^0.0.34",
+    "snarkjs": "^0.1.20"
+  },
+  "devDependencies": {
+    "truffle": "^5.0.44"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "compile": "circom circuits/twoAndOne.circom -o 1.json && circom circuits/twoAndTwo.circom -o 2.json"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wilsonbeam/zk-optimistic-rollup.git"
+  },
+  "keywords": [
+    "optimistic",
+    "rollup",
+    "zk",
+    "transfer",
+    "private",
+    "pool"
+  ],
+  "author": "Wilson Beam",
+  "license": "GPL-3.0-or-later",
+  "bugs": {
+    "url": "https://github.com/wilsonbeam/zk-optimistic-rollup/issues"
+  },
+  "homepage": "https://github.com/wilsonbeam/zk-optimistic-rollup#readme"
+}
