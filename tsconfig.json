@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "esModuleInterop": true,
+    "noImplicitAny": true,
+    "outDir": "dist",
+    "sourceMap": true,
+    "baseUrl": ".",
+    "declaration": true,
+    "paths": {
+      "*": ["node_moduels/*", "src/types/*", "test/types/*"]
+    }
+  },
+  "exclude": ["node_modules", "test", "dist", "example"]
+}

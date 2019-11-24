@@ -2,17 +2,67 @@
   "name": "zk-optimistic-rollup",
   "version": "0.0.1",
   "description": "Private token pool with optimistic rollup for zero knowledge transfer",
-  "main": "index.js",
+  "main": "dist/src/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "circuit": "./node_modules/.bin/circom circuits/zktransfer.circom -o build/zktransfer.json",
+    "test": "npm run testSolidity && npm run testTS",
+    "testSolidity": "./node_modules/.bin/truffle test",
+    "testTS": "mocha -r ts-node/register test/**/*.test.ts --timeout 5000",
+    "ts": "./node_modules/.bin/tsc",
+    "prettier": "./node_modules/.bin/prettier --single-quote --write --print-width 160 ./**/*.ts",
+    "coverage": "./node_modules/.bin/solidity-coverage",
+    "web3TS": "./node_modules/.bin/truffle compile && typechain --target web3-v1 './build/**/*.json' --outDir src/contracts",
+    "truffleTS": "./node_modules/.bin/truffle compile && typechain --target truffle './build/**/*.json' --outDir src/types/truffle-contracts"
+  },
   "dependencies": {
     "circom": "^0.0.34",
     "snarkjs": "^0.1.20"
   },
   "devDependencies": {
-    "truffle": "^5.0.44"
+    "@types/bn.js": "^4.11.5",
+    "@types/chai": "^4.2.4",
+    "@types/fs-extra": "^8.0.1",
+    "@types/levelup": "^3.1.1",
+    "@types/mocha": "^5.2.7",
+    "@types/rocksdb": "^3.0.0",
+    "bignumber.js": "^9.0.0",
+    "bn.js": "^4.11.0",
+    "chai": "^4.2.0",
+    "chai-as-promised": "^7.1.1",
+    "chai-bn": "^0.2.0",
+    "eth-gas-reporter": "^0.2.12",
+    "ethlint": "^1.2.5",
+    "fs-extra": "^8.1.0",
+    "husky": "^3.0.9",
+    "lint-staged": "^9.4.2",
+    "mocha": "^6.2.2",
+    "prettier": "^1.19.1",
+    "solc": "^0.5.13",
+    "solium": "^1.2.5",
+    "truffle": "^5.0.44",
+    "truffle-typings": "^1.0.8",
+    "ts-node": "^8.5.0",
+    "typechain": "^1.0.3",
+    "typechain-target-truffle": "^1.0.0",
+    "typechain-target-web3-v1": "^1.0.2",
+    "typescript": "^3.7.2",
+    "web3": "^1.2.4"
   },
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "compile": "circom circuits/twoAndOne.circom -o 1.json && circom circuits/twoAndTwo.circom -o 2.json"
+  "lint-staged": {
+    "**/*.{js,jsx,ts,tsx,json,css,scss,md}": [
+      "prettier --single-quote --write  --print-width 160",
+      "git add"
+    ],
+    "contracts/**/*.{sol}": [
+      "solium -d contracts/ --fix",
+      "git add"
+    ]
+  },
+  "husky": {
+    "hooks": {
+      "pre-commit": "lint-staged && npm run test"
+    }
   },
   "repository": {
     "type": "git",
@@ -26,7 +76,7 @@
     "private",
     "pool"
   ],
-  "author": "Wilson Beam",
+  "author": "Wilson Beam <wilsonbeam@protonmail.com>",
   "license": "GPL-3.0-or-later",
   "bugs": {
     "url": "https://github.com/wilsonbeam/zk-optimistic-rollup/issues"
