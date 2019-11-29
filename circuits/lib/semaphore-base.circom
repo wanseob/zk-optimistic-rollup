@@ -1,8 +1,8 @@
-include "../node_modules/circomlib/circuits/pedersen.circom";
-include "../node_modules/circomlib/circuits/mimcsponge.circom";
-include "../node_modules/circomlib/circuits/bitify.circom";
-include "../node_modules/circomlib/circuits/eddsamimcsponge.circom";
-include "./blake2s/blake2s.circom";
+include "../../node_modules/circomlib/circuits/pedersen.circom";
+include "../../node_modules/circomlib/circuits/mimcsponge.circom";
+include "../../node_modules/circomlib/circuits/bitify.circom";
+include "../../node_modules/circomlib/circuits/eddsamimcsponge.circom";
+include "./blake2s.circom";
 
 template HashLeftRight(n_rounds) {
   signal input left;

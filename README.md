@@ -19,5 +19,7 @@ Private token pool with optimistic rollup for zero knowledge transfer
    - UTXO secret keys management
    - Manage spendable coins
    - Tx build function
+   - Listen smart contract
 3. Coordinator
    - Manage TX Pool
+   - Interact with smart contract
