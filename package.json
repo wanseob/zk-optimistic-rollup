@@ -6,6 +6,9 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "circuit": "./node_modules/.bin/circom circuits/zktransfer.circom -o build/zktransfer.json",
+    "circuitInfo": "./node_modules/.bin/snarkjs info -c build/zktransfer.json",
+    "setup": "./node_modules/.bin/snarkjs setup -c build/zktransfer.json --pk build/proving_key.json --vk build/verification_key.json",
+    "verifier": "./node_modules/.bin/snarkjs generateverifier --vk build/verification_key.json -v contracts/ZkTransferVerifier.sol",
     "test": "npm run testSolidity && npm run testTS",
     "testSolidity": "./node_modules/.bin/truffle test",
     "testTS": "mocha -r ts-node/register test/**/*.test.ts --timeout 5000",
@@ -17,6 +20,7 @@
   },
   "dependencies": {
     "circom": "^0.0.34",
+    "circomlib": "^0.0.19",
     "snarkjs": "^0.1.20"
   },
   "devDependencies": {
