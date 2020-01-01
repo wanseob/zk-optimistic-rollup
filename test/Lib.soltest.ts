@@ -3,7 +3,7 @@
 // import fs from 'fs-extra';
 
 // const expect = chai.expect;
-const SNARKsRollUp = artifacts.require('SNARKsRollUp');
+const OptimisticSNARKsRollUp = artifacts.require('OptimisticSNARKsRollUp');
 
 const data = {
   metadata: {
@@ -19,8 +19,10 @@ const data = {
       withdrawal: '0x6cdebcdebcdebcdebcdebcdebcdebcdebcdebcdebcdebcdebcdebcdebcdebcde'
     },
     numberOfTxs: '0x0002',
-    totalFee: '0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+    numberOfDeposits: '0x0002',
+    totalFee: '0x000000000000000000000000000000000000000000000000000000000000000f'
   },
+  deposits: ['0x4cdebcdebcdebcdebcdebcdebcdebcdebcdebcdebcdebcdebcdebcdebcdebcde', '0x4cdebcdebcdebcdebcdebcdebcdebcdebcdebcdebcdebcdebcdebcdebcdebcde'],
   transactions: [
     {
       numOfInputs: '0x02',
@@ -48,7 +50,7 @@ const data = {
       numOfInputs: '0x02',
       numOfOutputs: '0x02',
       txType: '0x00',
-      fee: '0x2111111111111111111111111111111111111111111111111111111111111111',
+      fee: '0x12',
       inclusionRefs: [
         '0x14aebcdebcdebcdebcdebcdebcdebcdebcdebcdebcdebcdebcdebcdebcdebcde',
         '0x14bebcdebcdebcdebcdebcdebcdebcdebcdebcdebcdebcdebcdebcdebcdebcde'
@@ -84,7 +86,9 @@ const serialized = combine([
   data.metadata.next.nullifier,
   data.metadata.next.withdrawal,
   data.metadata.numberOfTxs,
+  data.metadata.numberOfDeposits,
   data.metadata.totalFee,
+  ...data.deposits,
   ...data.transactions.map(tx =>
     combine([tx.numOfInputs, tx.numOfOutputs, tx.txType, tx.fee, ...tx.inclusionRefs, ...tx.nullifiers, ...tx.outputs, ...tx.proofs])
   )
@@ -92,6 +96,6 @@ const serialized = combine([
 
 contract('Simple tests', async accounts => {
   before(async () => {
-    rollUpLib = await SNARKsRollUp.new();
+    rollUpLib = await OptimisticSNARKsRollUp.new();
   });
 });
