@@ -35,6 +35,41 @@ library SNARKsVerifier {
         return false;
     }
 
+    function proof(uint[8] memory proof) internal pure returns (Proof memory) {
+        return Proof(
+            Pairing.G1Point(proof[0], proof[1]),
+            Pairing.G2Point(
+                [
+                    proof[2], proof[3]
+                ],
+                [
+                    proof[4], proof[5]
+                ]
+            ),
+            Pairing.G1Point(proof[6], proof[7])
+        );
+    }
+
+    function vk(
+        uint[2] memory alfa1,
+        uint[2][2] memory beta2,
+        uint[2][2] memory gamma2,
+        uint[2][2] memory delta2,
+        uint[2][] memory IC
+    ) internal pure returns (VerifyingKey memory) {
+        Pairing.G1Point[] memory icPoints = new Pairing.G1Point[](IC.length);
+        for (uint i = 0; i < icPoints.length; i++) {
+            icPoints[i] = Pairing.G1Point(IC[i][0], IC[i][1]);
+        }
+        return VerifyingKey(
+            Pairing.G1Point(alfa1[0], alfa1[1]),
+            Pairing.G2Point(beta2[0], beta2[1]),
+            Pairing.G2Point(gamma2[0], gamma2[1]),
+            Pairing.G2Point(delta2[0], delta2[1]),
+            icPoints
+        );
+    }
+
     function depositVerifyingKey() internal pure returns (VerifyingKey memory vk) {
         vk.alfa1 = Pairing.G1Point(4269542148246979352756176288912580797961921813676205794824774517915091154974,12126533229109388101927507570428677925868726152081147676126973179492110189425);
         vk.beta2 = Pairing.G2Point([20793250547647660698953765248725600197706541786879700333339923316866011178076,11509699844375380303259020312641518336541287426197041278644033492703213596181], [14737157716713388805694872044792316300074458038294624315188072998259040562252,5078520378230990315714140470722488246489339852762567540542534980533135371265]);

@@ -3,6 +3,7 @@ pragma solidity >= 0.6.0;
 import { IERC20 } from "./IERC20.sol";
 import { SMT256 } from "smt-rollup/contracts/SMT.sol";
 import { Types } from "./Types.sol";
+import { Pairing } from "./Pairing.sol";
 import { SNARKsVerifier } from "./SNARKs.sol";
 
 contract OptimisticSNARKsRollUp {
@@ -20,6 +21,8 @@ contract OptimisticSNARKsRollUp {
     mapping(address=>Types.Proposer) public proposers;
     mapping(bytes32=>Types.Proposal) public proposals;
     mapping(bytes32=>Types.Deposit) public deposits;
+    mapping(uint8=>mapping(uint8=>SNARKsVerifier.VerifyingKey)) vks;
+    address admin;
 
     IERC20 public erc20;
     bool isERCPool;
@@ -28,13 +31,46 @@ contract OptimisticSNARKsRollUp {
         uint _challengePeriod,
         uint _minimumStake,
         uint _challengeLimit,
-        address tokenAddr
+        address _tokenAddr,
+        address _initialAdmin
     ) public {
         challengePeriod = _challengePeriod;
         challengeLimit = _challengeLimit;
         minimumStake = _minimumStake;
-        erc20 = IERC20(tokenAddr);
-        isERCPool = (tokenAddr != address(0)) ? true : false;
+        erc20 = IERC20(_tokenAddr);
+        isERCPool = (_tokenAddr != address(0)) ? true : false;
+        admin = _initialAdmin;
+    }
+
+    /**
+     * Admin functions are only available before completing the setup
+     */
+    modifier onlyAdmin {
+        require(msg.sender == admin, "Not authorized");
+        _;
+    }
+
+    function completeSetup() public onlyAdmin {
+        delete admin;
+    }
+
+    function registerVk(
+        uint8 numOfInputs,
+        uint8 numOfOutputs,
+        uint[2] memory alfa1,
+        uint[2][2] memory beta2,
+        uint[2][2] memory gamma2,
+        uint[2][2] memory delta2,
+        uint[2][] memory IC
+    ) public onlyAdmin {
+        SNARKsVerifier.VerifyingKey storage vk = vks[numOfInputs][numOfOutputs];
+        vk.alfa1 = Pairing.G1Point(alfa1[0], alfa1[1]);
+        vk.beta2 = Pairing.G2Point(beta2[0], beta2[1]);
+        vk.gamma2 = Pairing.G2Point(gamma2[0], gamma2[1]);
+        vk.delta2 = Pairing.G2Point(delta2[0], delta2[1]);
+        for(uint i = 0; i < IC.length; i++) {
+            vk.IC.push(Pairing.G1Point(IC[i][0], IC[i][1]));
+        }
     }
 
     function deposit(bytes32 note, uint amount, uint fee, uint[8] memory zkProof) public payable {
@@ -99,7 +135,7 @@ contract OptimisticSNARKsRollUp {
         require(submittedBlock.header.proposer == msg.sender, "Coordinator account is different with the message sender");
         Types.Proposer storage proposer = proposers[msg.sender];
         // Check permission
-        require(isProposable(proposer), "Not allowed to propose");
+        require(_isProposable(proposer), "Not allowed to propose");
         // Duplicated proposal is not allowed
         require(proposals[submittedBlock.id].headerHash == bytes32(0), "Already submitted");
         // Do not exceed maximum challenging cost
@@ -166,35 +202,7 @@ contract OptimisticSNARKsRollUp {
     }
 
     function isProposable(address proposerAddr) public view returns (bool) {
-        return isProposable(proposers[proposerAddr]);
-    }
-
-    function isProposable(Types.Proposer memory  proposer) internal view returns (bool) {
-        // You can add more consensus logic here
-        if(proposer.stake <= minimumStake) {
-            return false;
-        } else {
-            return true;
-        }
-    }
-
-    function checkChallengeCondition(Types.Proposal storage proposal) internal view {
-        // Check the optimistic roll up is in the challenge period
-        require(proposal.challengeDue > block.number, "You missed the challenge period");
-        // Check it is already slashed
-        require(!proposal.slashed, "Already slashed");
-        // Check the optimistic rollup exists
-        require(proposal.headerHash != bytes32(0), "Not an existing rollup");
-    }
-
-    function forfeitAndReward(address proposerAddr, address payable challenger) internal {
-        Types.Proposer storage proposer = proposers[proposerAddr];
-        // Reward
-        uint challengeReward = proposer.stake * 2 / 3;
-        challenger.transfer(challengeReward);
-        // Forfeit
-        proposer.stake = 0;
-        proposer.reward = 0;
+        return _isProposable(proposers[proposerAddr]);
     }
 
     // TODO temporal calculation
@@ -209,10 +217,7 @@ contract OptimisticSNARKsRollUp {
         // 96 = 32 bytes (nested array size) + 32 bytes (total data size) + 32 bytes (array length)
         uint siblingCalldataSize = 256*32*siblings.length + 96;
         Types.Block memory submission = Types.blockFromCalldata(siblingCalldataSize);
-        challengeOutputRollUp(submission, siblings);
-    }
 
-    function challengeOutputRollUp(Types.Block memory submission, bytes32[256][] memory siblings) internal challenge(submission) {
         // Assign a new array
         bytes32[] memory outputs = new bytes32[](siblings.length);
         // Get outputs to append
@@ -236,55 +241,262 @@ contract OptimisticSNARKsRollUp {
             outputs,
             siblings
         );
-        require(correctRoot != submission.header.nextOutputRoot, "Next output root should not be correct");
+        if(correctRoot == submission.header.nextOutputRoot) {
+            revert("Challenge failed. Correct next output root is submitted");
+        }
+        _executeSlash(submission.id, submission.header.proposer, msg.sender);
     }
 
-    function challengeNullifierRollUp(Types.Block memory submission) internal challenge(submission) {
+    // Possibility to cost a lot of failure gases because of the 'already slashed'
+    function challengeNullifierRollUp(bytes32[256][] memory siblings, bytes memory data) public {
+        // 96 = 32 bytes (nested array size) + 32 bytes (total data size) + 32 bytes (array length)
+        uint siblingCalldataSize = 256*32*siblings.length + 96;
+        Types.Block memory submission = Types.blockFromCalldata(siblingCalldataSize);
+
+        // Assign a new array
+        bytes32[] memory nullifiers = new bytes32[](siblings.length);
+        // Get outputs to append
+        uint index = 0;
+        for(uint i = 0; i < submission.body.transfers.length; i++) {
+            Types.Transfer memory transfer = submission.body.transfers[i];
+            for(uint j = 0; j < transfer.nullifiers.length; j++) {
+                nullifiers[index++] = transfer.nullifiers[j];
+            }
+        }
+        for(uint i = 0; i < submission.body.transfers.length; i++) {
+            Types.Withdrawal memory withdrawal = submission.body.withdrawals[i];
+            for(uint j = 0; j < withdrawal.nullifiers.length; j++) {
+                nullifiers[index++] = withdrawal.nullifiers[j];
+            }
+        }
+        require(
+            index == siblings.length,
+            "The length of the sibling array should be equal to the total nullifiers"
+        );
+        // Get rolled up root
+        bytes32 correctRoot = SMT256.rollUp(
+            submission.header.prevNullifierRoot,
+            nullifiers,
+            siblings
+        );
+        if(correctRoot == submission.header.nextNullifierRoot) {
+            revert("Next output root is correct");
+        }
+        _executeSlash(submission.id, submission.header.proposer, msg.sender);
     }
 
-    function challengeDepositRoot(Types.Block memory submission) internal challenge(submission) {
+    function challengeDepositRoot(bytes memory data) public {
+        Types.Block memory submission = Types.blockFromCalldata(0);
+        if(submission.header.depositRoot == submission.body.deposits.root()) {
+            revert("Deposit root is correct");
+        }
+        _executeSlash(submission.id, submission.header.proposer, msg.sender);
     }
 
-    function challengeTransferRoot(Types.Block memory submission) internal challenge(submission) {
+    function challengeTransferRoot(bytes memory data) public {
+        Types.Block memory submission = Types.blockFromCalldata(0);
+        if(submission.header.transferRoot == submission.body.transfers.root()) {
+            revert("Transfer root is correct");
+        }
+        _executeSlash(submission.id, submission.header.proposer, msg.sender);
     }
 
-    function challengeWithdrawalRoot(Types.Block memory submission) internal challenge(submission) {
+    function challengeWithdrawalRoot(bytes memory data) public {
+        Types.Block memory submission = Types.blockFromCalldata(0);
+        if(submission.header.withdrawalRoot == submission.body.withdrawals.root()) {
+            revert("Withdrawal root is correct");
+        }
+        _executeSlash(submission.id, submission.header.proposer, msg.sender);
     }
 
-    function challengeTotalFee(Types.Block memory submission) internal challenge(submission) {
+    function challengeTotalFee(bytes memory data) public {
+        Types.Block memory submission = Types.blockFromCalldata(0);
+        uint totalFee = 0;
+        for(uint i = 0; i < submission.body.transfers.length; i ++) {
+            totalFee += submission.body.transfers[i].fee;
+        }
+        for(uint i = 0; i < submission.body.withdrawals.length; i ++) {
+            totalFee += submission.body.withdrawals[i].fee;
+        }
+        if(totalFee == submission.header.fee) {
+            revert("Total fee is correct");
+        }
+        _executeSlash(submission.id, submission.header.proposer, msg.sender);
     }
 
-    function challengeTransfer(Types.Block memory submission) internal challenge(submission) {
+    function challengeTransfer(uint txIndex, bytes memory data) public {
+        Types.Block memory submission = Types.blockFromCalldata(32);
+        Types.Transfer memory transfer = submission.body.transfers[txIndex];
+
+        // The length of the array should be as described
+        if(transfer.numberOfInputs != transfer.inclusionRefs.length) _executeSlash(submission.id, submission.header.proposer, msg.sender);
+        if(transfer.numberOfInputs != transfer.nullifiers.length) _executeSlash(submission.id, submission.header.proposer, msg.sender);
+        // Check inclusion reference exists
+        for(uint i = 0; i < transfer.numberOfInputs; i++) {
+            // Accept challenge if any of the inclusion references does not exist
+            if(!refs[transfer.inclusionRefs[i]]) _executeSlash(submission.id, submission.header.proposer, msg.sender);
+        }
+        // Check the transfer type is supported
+        SNARKsVerifier.VerifyingKey memory vk = _getVerifyingKey(transfer.numberOfInputs, transfer.numberOfOutputs);
+        if(!_exist(vk)) _executeSlash(submission.id, submission.header.proposer, msg.sender);
+        // Check zkSNARKs validity
+        uint[] memory inputs = new uint[](3 + 2*transfer.numberOfInputs + transfer.numberOfOutputs);
+        uint index = 0;
+        inputs[index++] = uint(transfer.numberOfInputs);
+        inputs[index++] = uint(transfer.numberOfOutputs);
+        inputs[index++] = uint(transfer.fee);
+        for(uint i = 0; i < transfer.numberOfInputs; i++) {
+            inputs[index++] = uint(transfer.inclusionRefs[i]);
+        }
+        for(uint i = 0; i < transfer.numberOfInputs; i++) {
+            inputs[index++] = uint(transfer.nullifiers[i]);
+        }
+        for(uint i = 0; i < transfer.numberOfOutputs; i++) {
+            inputs[index++] = uint(transfer.outputs[i]);
+        }
+        SNARKsVerifier.Proof memory proof = SNARKsVerifier.proof(transfer.proof);
+        if(!vk.zkSNARKs(inputs, proof)) _executeSlash(submission.id, submission.header.proposer, msg.sender);
+        // Passed all tests. It's a valid transaction. Challenge is not accepted
+        revert("Passed all tests. The transfer is a valid transaction");
     }
 
-    function challengeWithdrawal(Types.Block memory submission) internal challenge(submission) {
+    function challengeWithdrawal(uint withdrawalIndex, bytes memory data) public {
+        Types.Block memory submission = Types.blockFromCalldata(32);
+        Types.Withdrawal memory withdrawal = submission.body.withdrawals[withdrawalIndex];
+
+        // return means this challenge is accepted
+        // The length of the array should be as described
+        if(withdrawal.numberOfInputs != withdrawal.inclusionRefs.length) _executeSlash(submission.id, submission.header.proposer, msg.sender);
+        if(withdrawal.numberOfInputs != withdrawal.nullifiers.length) _executeSlash(submission.id, submission.header.proposer, msg.sender);
+        // Check inclusion reference exists
+        for(uint i = 0; i < withdrawal.numberOfInputs; i++) {
+            if(!refs[withdrawal.inclusionRefs[i]]) _executeSlash(submission.id, submission.header.proposer, msg.sender);
+        }
+        // Check the transfer type is supported
+        SNARKsVerifier.VerifyingKey memory vk = _getVerifyingKey(withdrawal.numberOfInputs, 0);
+        if(!_exist(vk)) _executeSlash(submission.id, submission.header.proposer, msg.sender);
+        // Check zkSNARKs validity
+        uint[] memory inputs = new uint[](4 + 2 * withdrawal.numberOfInputs);
+        uint index = 0;
+        inputs[index++] = uint(withdrawal.amount);
+        inputs[index++] = uint(withdrawal.fee);
+        inputs[index++] = uint(withdrawal.to);
+        inputs[index++] = uint(withdrawal.numberOfInputs);
+        for(uint i = 0; i < withdrawal.numberOfInputs; i++) {
+            inputs[index++] = uint(withdrawal.inclusionRefs[i]);
+        }
+        for(uint i = 0; i < withdrawal.numberOfInputs; i++) {
+            inputs[index++] = uint(withdrawal.nullifiers[i]);
+        }
+        SNARKsVerifier.Proof memory proof = SNARKsVerifier.proof(withdrawal.proof);
+        if(!vk.zkSNARKs(inputs, proof)) _executeSlash(submission.id, submission.header.proposer, msg.sender);
+        // Passed all tests. It's a valid withdrawal. Challenge is not accepted
+        revert("Passed all tests. The withdrawal is a valid transaction");
     }
 
-    function challengeInclusion(Types.Block memory submission) internal challenge(submission) {
+    function challengeUsedNullifier(bytes32 nullifier, bytes32[256] memory sibling, bytes memory data) public {
+        Types.Block memory submission = Types.blockFromCalldata(32);
+        bytes32[] memory nullifiers = new bytes32[](1);
+        bytes32[256][] memory siblings = new bytes32[256][](1);
+        nullifiers[0] = nullifier;
+        siblings[0] = sibling;
+        bytes32 updatedRoot = SMT256.rollUp(
+            submission.header.prevNullifierRoot,
+            nullifiers,
+            siblings
+        );
+        if(updatedRoot != submission.header.prevNullifierRoot) {
+            revert("Submitted nullifier hasn't been used. New items should not change the root");
+        }
+
+        for(uint i = 0; i < submission.body.transfers.length; i++) {
+            Types.Transfer memory transfer = submission.body.transfers[i];
+            for(uint j = 0; j < transfer.nullifiers.length; j++) {
+                // Found matched nullifier
+                if(transfer.nullifiers[j] == nullifier) _executeSlash(submission.id, submission.header.proposer, msg.sender);
+            }
+        }
+        for(uint i = 0; i < submission.body.transfers.length; i++) {
+            Types.Withdrawal memory withdrawal = submission.body.withdrawals[i];
+            for(uint j = 0; j < withdrawal.nullifiers.length; j++) {
+                // Found matched nullifier
+                if(withdrawal.nullifiers[j] == nullifier) _executeSlash(submission.id, submission.header.proposer, msg.sender);
+            }
+        }
+        // The submitted block does not include the nullifier
+        revert("Failed to find the nullifier in the submitted transactions");
     }
 
+    function challengeDuplicatedNullifier(bytes32 nullifier, bytes memory data) public {
+        Types.Block memory submission = Types.blockFromCalldata(32);
 
-    modifier challenge(Types.Block memory submission) {
-        Types.Proposal storage proposal = proposals[submission.id];
+        uint count = 0;
+        for(uint i = 0; i < submission.body.transfers.length; i++) {
+            Types.Transfer memory transfer = submission.body.transfers[i];
+            for(uint j = 0; j < transfer.nullifiers.length; j++) {
+                // Found matched nullifier
+                if(transfer.nullifiers[j] == nullifier) count++;
+            }
+        }
+        for(uint i = 0; i < submission.body.transfers.length; i++) {
+            Types.Withdrawal memory withdrawal = submission.body.withdrawals[i];
+            for(uint j = 0; j < withdrawal.nullifiers.length; j++) {
+                // Found matched nullifier
+                if(withdrawal.nullifiers[j] == nullifier) count++;
+            }
+        }
+        if(count < 2) {
+            revert("The nullifier is not used more than twice");
+        }
+        _executeSlash(submission.id, submission.header.proposer, msg.sender);
+    }
+
+    function _executeSlash(bytes32 submissionId, address proposer, address challenger) internal {
+        Types.Proposal storage proposal = proposals[submissionId];
         // Check basic challenge conditions
-        checkChallengeCondition(proposal);
-        // Check type specific conditions
-        _;
+        _checkChallengeCondition(proposal);
         // Since the challenge satisfies the given conditions, slash the optimistic rollup proposer
         proposal.slashed = true; // Record it as slashed;
-        forfeitAndReward(submission.header.proposer, msg.sender);
+        _forfeitAndReward(proposer, challenger);
     }
-    /**
-    function outputRollUp(bytes32 prevRoot, bytes32[] memory leaves, bytes32[256][] memory siblings) public pure returns (bytes32 nextRoot);
-    function nullifierRollUp(bytes32 prevRoot, bytes32[] memory leaves, bytes32[256][] memory siblings) public pure returns (bytes32 nextRoot);
-    function verifyDepositRoot(Types.Block memory rollUpBlock) public pure returns (bool);
-    function verifyTransferRoot(Types.Block memory rollUpBlock) public pure returns (bool);
-    function verifyWithdrawalRoot(Types.Block memory rollUpBlock) public pure returns (bool);
-    function verifyFee(Types.Block memory rollUpBlock) public pure returns (bool);
-    function verifyOutputRollUp(Types.Block memory rollUpBlock) public pure returns (bool);
-    function verifyNullifierRollUp(Types.Block memory rollUpBlock) public pure returns (bool);
-    function verifyTransfer(Types.Transfer memory transfer) public view returns (bool);
-    function verifyWithdrawal(Types.Withdrawal memory withdrawal) public view returns (bool);
-    function verifyNonInclusion(bytes32 nullifier, bytes32[] memory siblings) public view returns (bool);
-    */
+
+    function _getVerifyingKey(
+        uint8 numberOfInputs,
+        uint8 numberOfOutputs
+    ) internal returns (SNARKsVerifier.VerifyingKey memory) {
+        SNARKsVerifier.VerifyingKey memory vk = vks[numberOfInputs][numberOfOutputs];
+    }
+
+    function _exist(SNARKsVerifier.VerifyingKey memory vk) internal returns (bool) {
+        if(vk.alfa1.X != 0) return true;
+        else return false;
+    }
+
+    function _isProposable(Types.Proposer memory  proposer) internal view returns (bool) {
+        // You can add more consensus logic here
+        if(proposer.stake <= minimumStake) {
+            return false;
+        } else {
+            return true;
+        }
+    }
+
+    function _checkChallengeCondition(Types.Proposal storage proposal) internal view {
+        // Check the optimistic roll up is in the challenge period
+        require(proposal.challengeDue > block.number, "You missed the challenge period");
+        // Check it is already slashed
+        require(!proposal.slashed, "Already slashed");
+        // Check the optimistic rollup exists
+        require(proposal.headerHash != bytes32(0), "Not an existing rollup");
+    }
+
+    function _forfeitAndReward(address proposerAddr, address challenger) internal {
+        Types.Proposer storage proposer = proposers[proposerAddr];
+        // Reward
+        uint challengeReward = proposer.stake * 2 / 3;
+        payable(challenger).transfer(challengeReward);
+        // Forfeit
+        proposer.stake = 0;
+        proposer.reward = 0;
+    }
 }

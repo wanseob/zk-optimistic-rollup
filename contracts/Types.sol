@@ -14,7 +14,7 @@ library Types {
         bytes32[] inclusionRefs;
         bytes32[] nullifiers;
         bytes32[] outputs;
-        uint[8] proofs;
+        uint[8] proof;
     }
 
     struct Withdrawal {
@@ -24,7 +24,7 @@ library Types {
         uint8 numberOfInputs;
         bytes32[] inclusionRefs;
         bytes32[] nullifiers;
-        uint[8] proofs;
+        uint[8] proof;
     }
 
     struct WithdrawalNote {
@@ -76,16 +76,6 @@ library Types {
         uint challengeDue;
         bool slashed;
     }
-
-    // struct Challenge {
-    //     Block target;
-    //     // 0: input root challenge
-    //     // 1: output root challenge
-    //     // 2: withdraw root challenge
-    //     // 3: tx challenge
-    //     uint8 challengeType;
-    //     uint8 txNum;
-    // }
 
     /**
      * @dev Block data will be serialized with the following structure
@@ -206,7 +196,7 @@ library Types {
                 for { let j := 0 } lt(j, n_o) { j := add(j, 1) } {
                     memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
                 }
-                // proofs
+                // proof
                 memory_cursor := assign_and_move(memory_cursor, add(memory_cursor, 0x20))
                 memory_cursor := assign_and_move(memory_cursor, 8)
                 for { let j := 0 } lt(j, 0x08) { j := add(j, 1) } {
@@ -250,7 +240,7 @@ library Types {
                 for { let j := 0 } lt(j, n_i) { j := add(j, 1) } {
                     memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
                 }
-                // proofs
+                // proof
                 memory_cursor := assign_and_move(memory_cursor, add(memory_cursor, 0x20))
                 memory_cursor := assign_and_move(memory_cursor, 8)
                 for { let j := 0 } lt(j, 0x08) { j := add(j, 1) } {
@@ -379,7 +369,7 @@ library Types {
                 transfer.inclusionRefs,
                 transfer.nullifiers,
                 transfer.outputs,
-                transfer.proofs
+                transfer.proof
             )
         );
     }
