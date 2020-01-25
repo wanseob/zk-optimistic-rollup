@@ -150,6 +150,10 @@ contract OptimisticSNARKsRollUp {
         proposer.exitAllowance = block.number + challengePeriod;
     }
 
+    /**
+     * @dev Possible attack scenario
+     - when (ERC20.transfer) does not work
+     */
     function finalize(bytes memory serializedFinalization) public {
         Types.Finalization memory finalization = Types.finalizationFromCalldata(0);
         Types.Proposal storage proposal = proposals[finalization.blockId];
@@ -212,6 +216,7 @@ contract OptimisticSNARKsRollUp {
     }
 
 
+    // If the bgas usage exceeds the challenge limit, the proposer will be slashed
     // Possibility to cost a lot of failure gases because of the 'already slashed'
     function challengeOutputRollUp(bytes32[256][] memory siblings, bytes memory data) public {
         // 96 = 32 bytes (nested array size) + 32 bytes (total data size) + 32 bytes (array length)

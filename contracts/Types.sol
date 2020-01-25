@@ -417,7 +417,7 @@ library Types {
         return root(leaves);
     }
 
-    function root(bytes32[] memory leaves) public pure returns (bytes32) {
+    function root(bytes32[] memory leaves) internal pure returns (bytes32) {
         if(leaves.length == 0) {
             return bytes32(0);
         } else if(leaves.length == 1) {
