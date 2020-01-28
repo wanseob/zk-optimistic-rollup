@@ -1,6 +1,18 @@
 pragma solidity >= 0.6.0;
 
-library Types {
+library Layer2 {
+    struct Blockchain {
+        mapping(uint256=>bool) finalizedTrees; // all finalized utxoRoots
+        mapping(bytes32=>uint256) utxoRootOf; // header => utxoRoot
+        mapping(bytes32=>bytes32) parentOf; // childBlockHash=>parentBlockHash
+        mapping(bytes32=>bool) withdrawn;
+        mapping(address=>Proposer) proposers;
+        mapping(bytes32=>Proposal) proposals;
+        mapping(bytes32=>Deposit) pendingDeposits;
+        bytes32 withdrawables;
+        bytes32 latestBlock;
+    }
+
     struct Deposit {
         bytes32 note;
         uint256 amount;
@@ -11,10 +23,10 @@ library Types {
         uint8 numberOfInputs;
         uint8 numberOfOutputs;
         uint256 fee;
-        bytes32[] inclusionRefs;
+        uint256[] inclusionRefs;
         bytes32[] nullifiers;
-        bytes32[] outputs;
-        uint[8] proof;
+        uint256[] outputs;
+        uint256[8] proof;
     }
 
     struct Withdrawal {
@@ -22,9 +34,9 @@ library Types {
         uint256 fee;
         address to;
         uint8 numberOfInputs;
-        bytes32[] inclusionRefs;
+        uint256[] inclusionRefs;
         bytes32[] nullifiers;
-        uint[8] proof;
+        uint256[8] proof;
     }
 
     struct WithdrawalNote {
@@ -33,11 +45,27 @@ library Types {
         address to;
     }
 
+    /*
     struct Header {
         bytes32 parentBlock; // genesis block header is keccak256 of the pool address
-        bytes32 prevOutputRoot;
+        bytes32 prevUTXORoot;
         bytes32 prevNullifierRoot;
-        bytes32 nextOutputRoot;
+        bytes32 nextUTXORoot;
+        bytes32 nextNullifierRoot;
+        bytes32 depositRoot;
+        bytes32 transferRoot;
+        bytes32 withdrawalRoot;
+        uint256 fee;
+        address proposer;
+    }
+    */
+    struct Header {
+        bytes32 parentBlock; // genesis block header is keccak256 of the pool address
+        uint256 prevUTXORoot;
+        uint256 prevUTXOIndex;
+        bytes32 prevNullifierRoot;
+        uint256 nextUTXORoot;
+        uint256 nextUTXOIndex;
         bytes32 nextNullifierRoot;
         bytes32 depositRoot;
         bytes32 transferRoot;
@@ -75,6 +103,13 @@ library Types {
         bytes32 headerHash;
         uint challengeDue;
         bool slashed;
+    }
+
+    struct ChallengeResult {
+        bool slash;
+        bytes32 proposalId;
+        address proposer;
+        string message;
     }
 
     /**
@@ -133,9 +168,9 @@ library Types {
             header := memory_cursor
             // Assign values to the allocated memory
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // parentBlock
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // prevOutputRoot
+            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // prevUTXORoot
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // prevNullifierRoot
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // nextOutputRoot
+            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // nextUTXORoot
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // nextNullifierRoot
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // depositRoot
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // transferRoot
@@ -294,9 +329,9 @@ library Types {
             header := memory_cursor
             // Assign values to the allocated memory
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // parentBlock
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // prevOutputRoot
+            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // prevUTXORoot
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // prevNullifierRoot
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // nextOutputRoot
+            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // nextUTXORoot
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // nextNullifierRoot
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // depositRoot
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // transferRoot
@@ -347,9 +382,9 @@ library Types {
         return keccak256(
             abi.encodePacked(
                 header.parentBlock,
-                header.prevOutputRoot,
+                header.prevUTXORoot,
                 header.prevNullifierRoot,
-                header.nextOutputRoot,
+                header.nextUTXORoot,
                 header.nextNullifierRoot,
                 header.depositRoot,
                 header.transferRoot,
