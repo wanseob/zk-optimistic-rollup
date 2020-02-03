@@ -83,14 +83,6 @@ library Layer2 {
         bytes32 mergedLeaves;
     }
 
-    /**
-    struct WithdrawalNote {
-        uint256 amount;
-        uint256 fee;
-        address to;
-    }
-    */
-
     struct Header {
         bytes32 parentBlock;
         /** UTXO roll up  */
