@@ -7,6 +7,9 @@ interface IERC20 {
 
 
 library Layer1 {
+    /**
+     * @dev It moves assets from layer 1 to the layer 2 anchor contract.
+     */
     function toLayer2(address self, address layer2, uint amount) internal returns (bool) {
         if (self == address(0)) {
             require(amount == msg.value, "Does not receive correct amount");
@@ -16,6 +19,9 @@ library Layer1 {
         return true;
     }
 
+    /**
+     * @dev It withdraw assets back to the layer 1 from the layer 2 anchor contract.
+     */
     function withdrawFromLayer2(address self, address to, uint amount) internal {
         if (self == address(0)) {
             payable(to).transfer(amount);

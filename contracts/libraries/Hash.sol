@@ -16,6 +16,10 @@ library MiMC {
 }
 
 
+/**
+ * @dev This will be used to provide hash functions to calculate roll up.
+ *      Please see RollUpLib.sol from 'merkle-tree-rollup'.
+ */
 library Hash {
     uint256 constant k =  21888242871839275222246405745257275088548364400416034343698204186575808495617;
 
