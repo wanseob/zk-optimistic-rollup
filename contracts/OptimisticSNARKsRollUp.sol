@@ -5,6 +5,7 @@ import { Coordinatable } from "./zk-opru-base/Coordinatable.sol";
 import { SetupWizard } from "./zk-opru-base/SetupWizard.sol";
 import { UserInteractable } from "./zk-opru-base/UserInteractable.sol";
 
+
 contract OptimisticSNARKsRollUp is UserInteractable, Coordinatable, Challengeable, SetupWizard {
     constructor(
         address _erc20,

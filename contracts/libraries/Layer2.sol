@@ -1,23 +1,48 @@
 pragma solidity >= 0.6.0;
 
 library Layer2 {
+    enum TxType { Transfer, Withdrawal, Migration }
+
     struct Blockchain {
-        mapping(uint256=>bool) finalizedTrees; // all finalized utxoRoots
-        mapping(bytes32=>uint256) utxoRootOf; // header => utxoRoot
+        bytes32 latest;
+        /** For inclusion reference */
         mapping(bytes32=>bytes32) parentOf; // childBlockHash=>parentBlockHash
-        mapping(bytes32=>bool) withdrawn;
+        mapping(bytes32=>uint256) utxoRootOf; // header => utxoRoot
+        mapping(uint256=>bool) finalizedUTXOs; // all finalized utxoRoots
+        /** For coordinating */
         mapping(address=>Proposer) proposers;
         mapping(bytes32=>Proposal) proposals;
-        mapping(bytes32=>Deposit) pendingDeposits;
-        bytes32 withdrawables;
-        bytes32 latestBlock;
+        /** For deposit */
+        MassDeposit[] depositQueue;
+        /** For withdrawal */
+        Withdrawable[] withdrawables; /// 0: daily snapshot of the latest withdrawable tree
+        uint256 snapshotTimestamp;
+        mapping(bytes32=>bool) withdrawn;
+        /** For migrations */
+        MassMigration[] migrations;
     }
 
-    struct Deposit {
-        bytes32 note;
+
+    struct MassDeposit {
+        bytes32 merged;
         uint256 amount;
         uint256 fee;
+        uint256 length;
+        bool committed;
     }
+
+    struct Withdrawable {
+        bytes32 root;
+        uint index;
+    }
+
+    /**
+    struct Deposit {
+        uint256 amount;
+        uint256 salt;
+        uint[2] pubKey;
+    }
+    */
 
     struct Transfer {
         uint8 numberOfInputs;
@@ -39,45 +64,68 @@ library Layer2 {
         uint256[8] proof;
     }
 
+    struct Migration {
+        uint256 leaf; /// amount, salt, pubkey[2]
+        address destination;
+        uint256 amount;
+        uint256 fee;
+        uint256 migrationFee; /// migration executor will take this
+        uint8 numberOfInputs;
+        uint256[] inclusionRefs;
+        bytes32[] nullifiers;
+        uint256[8] proof;
+    }
+
+    struct MassMigration {
+        address destination;
+        uint256 amount;
+        uint256 migrationFee;
+        bytes32 mergedLeaves;
+    }
+
+    /**
     struct WithdrawalNote {
         uint256 amount;
         uint256 fee;
         address to;
     }
-
-    /*
-    struct Header {
-        bytes32 parentBlock; // genesis block header is keccak256 of the pool address
-        bytes32 prevUTXORoot;
-        bytes32 prevNullifierRoot;
-        bytes32 nextUTXORoot;
-        bytes32 nextNullifierRoot;
-        bytes32 depositRoot;
-        bytes32 transferRoot;
-        bytes32 withdrawalRoot;
-        uint256 fee;
-        address proposer;
-    }
     */
+
     struct Header {
-        bytes32 parentBlock; // genesis block header is keccak256 of the pool address
+        bytes32 parentBlock;
+        /** UTXO roll up  */
         uint256 prevUTXORoot;
         uint256 prevUTXOIndex;
-        bytes32 prevNullifierRoot;
         uint256 nextUTXORoot;
         uint256 nextUTXOIndex;
+
+        /** Nullifier roll up  */
+        bytes32 prevNullifierRoot;
         bytes32 nextNullifierRoot;
+
+        /** Withdrawal roll up  */
+        bytes32 prevWithdrawalRoot;
+        uint256 prevWithdrawalIndex;
+        bytes32 nextWithdrawalRoot;
+        uint256 nextWithdrawalIndex;
+
+        /** Transactions */
         bytes32 depositRoot;
         bytes32 transferRoot;
         bytes32 withdrawalRoot;
+        bytes32 migrationRoot;
+
+        /** Etc */
         uint256 fee;
+        bytes32 metadata;
         address proposer;
     }
 
     struct Body {
-        bytes32[] deposits;
+        uint[] depositIds;
         Transfer[] transfers;
         Withdrawal[] withdrawals;
+        Migration[] migrations;
     }
 
     struct Block {
@@ -89,8 +137,8 @@ library Layer2 {
     struct Finalization {
         bytes32 blockId;
         Header header;
-        bytes32[] deposits;
-        WithdrawalNote[] withdrawals;
+        uint[] depositIds;
+        MassMigration[] migrations;
     }
 
     struct Proposer {
@@ -112,32 +160,26 @@ library Layer2 {
         string message;
     }
 
+    function init(Blockchain storage chain, bytes32 genesis) internal {
+        chain.latest = genesis;
+        chain.withdrawables.push(); /// withdrawables[0]: daily snapshot
+        chain.withdrawables.push(); /// withdrawables[0]: initial withdrawable tree
+    }
+
     /**
      * @dev Block data will be serialized with the following structure
-     *      246 bytes: Header
-     *          - 20 bytes: proposer address
-     *          - 96 bytes: previous roots(output root + nullifier root + withdrawal root)
-     *          - 96 bytes: next roots(output root + nullifier root + withdrawal root)
-     *          - 2 bytes: number of transfers
-     *          - 32 bytes:  total fee
-     *      ? bytes: Array of transfers
-     *          Transfer data:
-     *              - 1 byte: (n_i) number of intputs
-     *              - 1 byte: (n_o) number of outputs
-     *              - 1 byte: transfer type
-     *              - 32 bytes: transfer fee
-     *              - (n_i * 32) bytes: inclusion references
-     *              - (n_i * 32) bytes: nullifiers
-     *              - (n_o * 32) bytes: outputs
-     *              - 256 bytes: zk SNARKs proof
-     * @param leftPadding Jump the first n bytes of the calldata which is not the serialized roll up data.
+     *      https://github.com/wilsonbeam/zk-optimistic-rollup/wiki/Serialization
+     * @param paramIndex The index of the block calldata parameter in the external function
      */
-    function blockFromCalldata(uint leftPadding) internal pure returns (Block memory) {
+    function blockFromCalldataAt(uint paramIndex) internal pure returns (Block memory) {
+        /// 4 means the length of the function signature in the calldata
+        uint startsFrom = 4 + abi.decode(msg.data[4 + 32*paramIndex:4 + 32*(paramIndex+1)], (uint));
         bytes32 id;
         Header memory header;
-        bytes32[] memory deposits;
+        uint[] memory depositIds;
         Transfer[] memory txs;
         Withdrawal[] memory withdrawals;
+        Migration[] memory migrations;
         assembly {
             /**
              * @dev It copies `len` of bytes from calldata at `curr_call_cursor` to the memory at `curr_mem_cursor`.
@@ -158,35 +200,49 @@ library Layer2 {
                 new_mem_cursor := add(curr_mem_cursor, 0x20)
             }
 
-            /** Header */
-            // Allocate memory
+            /// Allocate memory
             let starting_mem_pos := mload(0x40)
             let memory_cursor := starting_mem_pos
-            // Skip 0x04 for signature + 0x20 for calldata length + leftPadding
-            let calldata_cursor := add(0x24, leftPadding)
-            // Define header ptr
+            /// Skip 0x04 for signature + 0x20 for calldata length + startsFrom
+            let calldata_cursor := startsFrom
+
+            /** Header */
+            /// Define header ptr
             header := memory_cursor
-            // Assign values to the allocated memory
+            /// Assign values to the allocated memory
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // parentBlock
+            /// utxo roll up
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // prevUTXORoot
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // prevNullifierRoot
+            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // prevUTXOIndex
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // nextUTXORoot
+            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // nextUTXOIndex
+            /// nullifier roll up
+            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // prevNullifierRoot
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // nextNullifierRoot
+            /// withdrawal roll up
+            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // prevWithdrawalRoot
+            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // prevWithdrawalIndex
+            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // nextWithdrawalRoot
+            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // nextWithdrawalIndex
+            /// transaction result
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // depositRoot
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // transferRoot
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // withdrawalRoot
+            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // migrationRoot
+            /// Etc
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // fee
+            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // metadata
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x14) // proposer
 
             /** Body - deposits*/
-            // Read the size of the deposit array
+            /// Read the size of the deposit array (maximum 1024)
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x02)
             let num_of_deposits := mload(sub(memory_cursor, 0x20))
-            // Allocate memory for the array of deposits
-            deposits := memory_cursor
-            // Set length of the array
+            /// Allocate memory for the array of deposits
+            depositIds := memory_cursor
+            /// Set length of the array
             memory_cursor := assign_and_move(memory_cursor, num_of_deposits)
-            // Copy deposit hashes to the array
+            /// Copy deposit ids to the array
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, mul(num_of_deposits, 0x20))
 
 
@@ -282,20 +338,75 @@ library Layer2 {
                     memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
                 }
             }
+            
+            /** Body - migrations */
+            // Read the size of the migrations array
+            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x02)
+            let num_of_migrations := mload(sub(memory_cursor, 0x20))
+            // Allocate memory for the array of migrations
+            migrations := memory_cursor
+            // Set length of the array
+            memory_cursor := assign_and_move(memory_cursor, num_of_migrations)
+            // Pointers of each item of the array
+            let migration_pointers := memory_cursor
+            memory_cursor := add(memory_cursor, mul(0x20, num_of_migrations))
+            // Assign Migration object to the memory address and let the pointer indicate the position
+            for { let i := 0 } lt(i, num_of_migrations) { i := add(i, 1) } {
+                // set migrations[i]'s ref mem address
+                mstore(add(migration_pointers, mul(0x20, i)), memory_cursor)
+                // Get leaf which is mimc(amount, salt, pubKey[2])
+                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
+                // Get destination
+                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x14)
+                // Get amount
+                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
+                // Get fee
+                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
+                // Get migrationFee
+                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
+                // Get number of input
+                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x01)
+                let n_i := mload(sub(memory_cursor, 0x20))
+                // inclusion refs
+                memory_cursor := assign_and_move(memory_cursor, add(memory_cursor, 0x20))
+                memory_cursor := assign_and_move(memory_cursor, n_i)
+                for { let j := 0 } lt(j, n_i) { j := add(j, 1) } {
+                    memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
+                }
+                // nullifiers
+                memory_cursor := assign_and_move(memory_cursor, add(memory_cursor, 0x20))
+                memory_cursor := assign_and_move(memory_cursor, n_i)
+                for { let j := 0 } lt(j, n_i) { j := add(j, 1) } {
+                    memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
+                }
+                // proof
+                memory_cursor := assign_and_move(memory_cursor, add(memory_cursor, 0x20))
+                memory_cursor := assign_and_move(memory_cursor, 8)
+                for { let j := 0 } lt(j, 0x08) { j := add(j, 1) } {
+                    memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
+                }
+            }
 
             id := keccak256(starting_mem_pos, sub(memory_cursor, starting_mem_pos))
             // Deallocate memory
             mstore(0x40, memory_cursor)
         }
-        Body memory body = Body(deposits, txs, withdrawals);
+        Body memory body = Body(depositIds, txs, withdrawals, migrations);
         return Block(id, header, body);
     }
 
-    function finalizationFromCalldata(uint leftPadding) internal pure returns (Finalization memory) {
+    /**
+     * @dev Block data will be serialized with the following structure
+     *      https://github.com/wilsonbeam/zk-optimistic-rollup/wiki/Serialization
+     * @param paramIndex The index of the block calldata parameter in the external function
+     */
+    function finalizationFromCalldataAt(uint paramIndex) internal pure returns (Finalization memory) {
+        /// 4 means the length of the function signature in the calldata
+        uint startsFrom = 4 + abi.decode(msg.data[4 + 32*paramIndex : 4 + 32*(paramIndex+1)], (uint));
         bytes32 blockId;
         Header memory header;
-        bytes32[] memory deposits;
-        WithdrawalNote[] memory withdrawals;
+        uint[] memory depositIds;
+        MassMigration[] memory migrations;
         assembly {
             /**
              * @dev It copies `len` of bytes from calldata at `curr_call_cursor` to the memory at `curr_mem_cursor`.
@@ -316,83 +427,90 @@ library Layer2 {
                 new_mem_cursor := add(curr_mem_cursor, 0x20)
             }
 
-            /** Header */
-            // Allocate memory
+            /// Allocate memory
             let starting_mem_pos := mload(0x40)
             let memory_cursor := starting_mem_pos
-            // Skip 0x04 for signature + 0x20 for calldata length + leftPadding
-            let calldata_cursor := add(0x24, leftPadding)
-            // Get block id
+            let calldata_cursor := startsFrom
+            /** Get blockId */
             blockId := memory_cursor
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // blockId
-            // Define header ptr
+
+            /** Header */
+            /// Define header ptr
             header := memory_cursor
-            // Assign values to the allocated memory
+            /// Assign values to the allocated memory
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // parentBlock
+            /// utxo roll up
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // prevUTXORoot
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // prevNullifierRoot
+            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // prevUTXOIndex
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // nextUTXORoot
+            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // nextUTXOIndex
+            /// nullifier roll up
+            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // prevNullifierRoot
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // nextNullifierRoot
+            /// withdrawal roll up
+            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // prevWithdrawalRoot
+            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // prevWithdrawalIndex
+            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // nextWithdrawalRoot
+            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // nextWithdrawalIndex
+            /// transaction result
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // depositRoot
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // transferRoot
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // withdrawalRoot
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // fee
+            /// Other metadata
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x14) // proposer
+            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // metadata
 
-            /** Deposits*/
-            // Read the size of the deposit array
+            /** Get depositIds */
+            /// Read the size of the deposit array (maximum 1024)
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x02)
             let num_of_deposits := mload(sub(memory_cursor, 0x20))
-            // Allocate memory for the array of deposits
-            deposits := memory_cursor
-            // Set length of the array
+            /// Allocate memory for the array of deposits
+            depositIds := memory_cursor
+            /// Set length of the array
             memory_cursor := assign_and_move(memory_cursor, num_of_deposits)
-            // Copy deposit hashes to the array
+            /// Copy deposit ids to the array
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, mul(num_of_deposits, 0x20))
 
-            /** Withdrawal notes */
-            // Read the size of the withdrawal notes array
+            /** Get mass migrations */
+            // Read the size of the migrations array
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x02)
-            let num_of_withdrawals := mload(sub(memory_cursor, 0x20))
-            // Allocate memory for the array of withdrawals
-            withdrawals := memory_cursor
+            let num_of_migrations := mload(sub(memory_cursor, 0x20))
+            // Allocate memory for the array of migrations
+            migrations := memory_cursor
             // Set length of the array
-            memory_cursor := assign_and_move(memory_cursor, num_of_withdrawals)
+            memory_cursor := assign_and_move(memory_cursor, num_of_migrations)
             // Pointers of each item of the array
-            let withdrawal_pointers := memory_cursor
-            memory_cursor := add(memory_cursor, mul(0x20, num_of_withdrawals))
-            // Assign Withdrawal object to the memory address and let the pointer indicate the position
-            for { let i := 0 } lt(i, num_of_withdrawals) { i := add(i, 1) } {
-                // set withdrawals[i]'s ref mem address
-                mstore(add(withdrawal_pointers, mul(0x20, i)), memory_cursor)
+            let migration_pointers := memory_cursor
+            memory_cursor := add(memory_cursor, mul(0x20, num_of_migrations))
+            // Assign MassMigration object to the memory address and let the pointer indicate the position
+            for { let i := 0 } lt(i, num_of_migrations) { i := add(i, 1) } {
+                // set migrations[i]'s ref mem address
+                mstore(add(migration_pointers, mul(0x20, i)), memory_cursor)
+                // Get destination
+                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x14)
                 // Get amount
                 memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
-                // Get fee
+                // Get migrationFee
                 memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
-                // Get recipient
-                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x14)
+                // Get mergedLeaves
+                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
             }
-            // Deallocate memory
+
+            /// Deallocate memory
             mstore(0x40, memory_cursor)
         }
-        return Finalization(blockId, header, deposits, withdrawals);
+        return Finalization(blockId, header, depositIds, migrations);
     }
 
     function hash(Header memory header) internal pure returns (bytes32) {
-        return keccak256(
-            abi.encodePacked(
-                header.parentBlock,
-                header.prevUTXORoot,
-                header.prevNullifierRoot,
-                header.nextUTXORoot,
-                header.nextNullifierRoot,
-                header.depositRoot,
-                header.transferRoot,
-                header.withdrawalRoot,
-                header.fee,
-                header.proposer
-            )
-        );
+        bytes32 headerHash;
+        uint HEADER_LENGTH = 17 * 32 + 20;
+        assembly {
+            headerHash := keccak256(header, HEADER_LENGTH)
+        }
+        return headerHash;
     }
 
     function hash(Transfer memory transfer) internal pure returns (bytes32) {
@@ -409,22 +527,29 @@ library Layer2 {
         );
     }
 
-    function hash(WithdrawalNote memory note) internal pure returns (bytes32) {
+    function hash(Withdrawal memory withdrawal) internal pure returns (bytes32) {
         return keccak256(
             abi.encodePacked(
-                note.amount,
-                note.fee,
-                note.to
+                withdrawal.amount,
+                withdrawal.fee,
+                withdrawal.to,
+                withdrawal.numberOfInputs,
+                withdrawal.inclusionRefs,
+                withdrawal.nullifiers,
+                withdrawal.proof
             )
         );
     }
-
-    function hash(Withdrawal memory withdrawal) internal pure returns (bytes32) {
-        return hash(getNote(withdrawal));
-    }
-
-    function getNote(Withdrawal memory withdrawal) internal pure returns (WithdrawalNote memory) {
-        return WithdrawalNote(withdrawal.amount, withdrawal.fee, withdrawal.to);
+    
+    function hash(MassMigration memory massMigration) internal pure returns (bytes32) {
+        return keccak256(
+            abi.encodePacked(
+                massMigration.destination,
+                massMigration.amount,
+                massMigration.migrationFee,
+                massMigration.mergedLeaves
+            )
+        );
     }
 
     function root(Transfer[] memory transfers) internal pure returns (bytes32) {
@@ -443,11 +568,45 @@ library Layer2 {
         return root(leaves);
     }
 
+    function root(Migration[] memory migrations) internal pure returns (bytes32) {
+        return root(toMassMigration(migrations));
+    }
 
-    function root(WithdrawalNote[] memory withdrawalNotes) internal pure returns (bytes32) {
-        bytes32[] memory leaves = new bytes32[](withdrawalNotes.length);
-        for(uint i = 0; i < withdrawalNotes.length; i++) {
-            leaves[i] = hash(withdrawalNotes[i]);
+    function toMassMigration(Migration[] memory migrations) internal pure returns (MassMigration[] memory) {
+        MassMigration[] memory massMigrations = new MassMigration[](migrations.length);
+        MassMigration memory toMerge;
+        Migration memory migration;
+        uint numOfDestination = 0;
+        for(uint i = 0; i < migrations.length; i++) {
+            bool found;
+            migration = migrations[i];
+            for(uint j = 0; j < numOfDestination; j++) {
+                if(massMigrations[j].destination == migration.destination) {
+                    toMerge = massMigrations[j];
+                    found = true;
+                }
+                if(found) break;
+            }
+            if(!found) {
+                toMerge = massMigrations[++numOfDestination];
+            }
+            toMerge.amount += migration.amount;
+            toMerge.migrationFee += migration.migrationFee;
+            toMerge.mergedLeaves = keccak256(
+                abi.encodePacked(toMerge.mergedLeaves, migration.leaf)
+            );
+        }
+        MassMigration[] memory packed = new MassMigration[](numOfDestination);
+        for(uint i = 0; i < numOfDestination; i++) {
+            packed[i] = massMigrations[i];
+        }
+        return packed;
+    }
+
+    function root(MassMigration[] memory massMigrations) internal pure returns (bytes32) {
+        bytes32[] memory leaves = new bytes32[](massMigrations.length);
+        for(uint i = 0; i < massMigrations.length; i++) {
+            leaves[i] = hash(massMigrations[i]);
         }
         return root(leaves);
     }
@@ -471,6 +630,14 @@ library Layer2 {
         return root(nodes);
     }
 
+    function root(uint[] memory leaves) internal pure returns (bytes32) {
+        bytes32[] memory converted;
+        assembly {
+            converted := leaves
+        }
+        return root(converted);
+    }
+
     // TODO temporal calculation
     function maxChallengeCost(Block memory submission) internal pure returns (uint256 maxCost) {
         uint mtRollUpCost = 0;
@@ -481,5 +648,13 @@ library Layer2 {
             smtRollUpCost += transfer.numberOfOutputs * (16 * 32 * 257);
         }
         maxCost = mtRollUpCost > smtRollUpCost ? mtRollUpCost : smtRollUpCost;
+    }
+
+    function getSNARKsSignature(
+        TxType txType,
+        uint8 numberOfInputs,
+        uint8 numberOfOutputs
+    ) public pure returns (bytes32) {
+        return keccak256(abi.encodePacked(txType, numberOfInputs, numberOfOutputs));
     }
 }

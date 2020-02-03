@@ -1,5 +1,6 @@
 pragma solidity >= 0.6.0;
 
+
 contract Configurated {
     /**
      * Constants to manage this layer2 system.
