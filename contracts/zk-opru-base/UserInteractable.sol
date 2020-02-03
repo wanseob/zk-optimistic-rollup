@@ -12,6 +12,7 @@ contract UserInteractable is ZkOptimisticRollUpStore {
     using Layer1 for address;
 
     event Deposit(uint indexed queuedAt, uint note);
+
     function deposit(uint note, uint amount, uint[2] memory pubKey, uint fee) public payable {
         ///TODO: limit the length of a queue: 1024
         require(note != 0, "Note hash can not be zero");

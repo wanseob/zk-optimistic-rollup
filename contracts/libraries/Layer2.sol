@@ -81,6 +81,7 @@ library Layer2 {
         uint256 amount;
         uint256 migrationFee;
         bytes32 mergedLeaves;
+        uint256 length;
     }
 
     struct Header {
@@ -488,6 +489,8 @@ library Layer2 {
                 memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
                 // Get mergedLeaves
                 memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
+                // Get number of total merged leaves
+                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
             }
 
             /// Deallocate memory
@@ -587,6 +590,7 @@ library Layer2 {
             toMerge.mergedLeaves = keccak256(
                 abi.encodePacked(toMerge.mergedLeaves, migration.leaf)
             );
+            toMerge.length++;
         }
         MassMigration[] memory packed = new MassMigration[](numOfDestination);
         for(uint i = 0; i < numOfDestination; i++) {

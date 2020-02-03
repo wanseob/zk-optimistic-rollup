@@ -9,14 +9,14 @@ contract Coordinatable is ZkOptimisticRollUpStore {
     using Layer2 for *;
     using Layer1 for address;
 
-    /**
-     * Coordinator interaction functions
-     * - register
-     * - deregister
-     * - withdrawReward
-     * - propose
-     * - finalize
-     */
+    /// Coordinator interaction functions
+    /// - register
+    /// - deregister
+    /// - propose
+    /// - finalize
+    /// - migrate
+    /// - withdrawReward
+
     function register() public payable {
         require(msg.value >= MINIMUM_STAKE, "Should stake more than minimum amount of ETH");
         Layer2.Proposer storage proposer = l2Chain.proposers[msg.sender];
@@ -30,14 +30,6 @@ contract Coordinatable is ZkOptimisticRollUpStore {
         proposerAddr.transfer(proposer.reward + proposer.stake);
         proposer.stake = 0;
         proposer.reward = 0;
-    }
-
-    function withdrawReward(uint amount) public {
-        address payable proposerAddr = msg.sender;
-        Layer2.Proposer storage proposer = l2Chain.proposers[proposerAddr];
-        require(proposer.reward >= amount, "You can't withdraw more than you have");
-        proposerAddr.transfer(amount);
-        proposer.reward -= amount;
     }
 
     function propose(bytes memory) public {
@@ -68,11 +60,6 @@ contract Coordinatable is ZkOptimisticRollUpStore {
         proposer.exitAllowance = block.number + CHALLENGE_PERIOD;
     }
 
-    /**
-     * @dev Possible attack scenario
-     - when (ERC20.transfer) does not work
-     * TODO change this to a roll up version
-     */
     function finalize(bytes memory) public {
         Layer2.Finalization memory finalization = Layer2.finalizationFromCalldataAt(0);
         Layer2.Proposal storage proposal = l2Chain.proposals[finalization.blockId];
@@ -90,10 +77,6 @@ contract Coordinatable is ZkOptimisticRollUpStore {
             totalFee += deposit.fee;
             delete l2Chain.depositQueue[finalization.depositIds[i]];
         }
-        /// Record mass migrations and collect fees
-        for (uint i = 0; i < finalization.migrations.length; i++) {
-            l2Chain.migrations.push() = finalization.migrations[i];
-        }
 
         /// Update withdrawable every finalization
         require(l2Chain.withdrawables.length >= 2, "not initialized blockchain");
@@ -101,6 +84,7 @@ contract Coordinatable is ZkOptimisticRollUpStore {
         require(latest.root == finalization.header.prevWithdrawalRoot, "Different withdrawal tree");
         require(latest.index == finalization.header.prevWithdrawalIndex, "Different withdrawal tree");
         if (finalization.header.prevWithdrawalIndex > finalization.header.nextWithdrawalIndex) {
+            /// Fully filled. Start a new withdrawal tree
             l2Chain.withdrawables.push();
         }
         Layer2.Withdrawable storage target = l2Chain.withdrawables[l2Chain.withdrawables.length - 1];
@@ -114,12 +98,49 @@ contract Coordinatable is ZkOptimisticRollUpStore {
             l2Chain.withdrawables[0].index = target.index;
         }
 
+        /// Record mass migrations and collect fees
+        for (uint i = 0; i < finalization.migrations.length; i++) {
+            l2Chain.migrations.push() = finalization.migrations[i];
+        }
+
         /// Give fee to the proposer
         Layer2.Proposer storage proposer = l2Chain.proposers[finalization.header.proposer];
         proposer.reward += totalFee;
 
         /// Update OPRU chain
         l2Chain.latest = proposal.headerHash;
+    }
+
+    function migrate(
+        uint migrationId,
+        function(uint, uint, uint, bytes32) external execute
+    ) external {
+        Layer2.MassMigration storage migration = l2Chain.migrations[migrationId];
+        require(msg.sender == migration.destination, "Not authorized");
+        try execute(
+            migration.amount,
+            migration.migrationFee,
+            migration.length,
+            migration.mergedLeaves
+        ) {
+            /// Transfer assets
+            l1Asset.withdrawFromLayer2(
+                migration.destination,
+                (migration.amount+migration.migrationFee)
+            );
+            /// Delete mass migration
+            delete l2Chain.migrations[migrationId];
+        } catch {
+           revert("Migration executor has a problem");
+        }
+    }
+
+    function withdrawReward(uint amount) public {
+        address payable proposerAddr = msg.sender;
+        Layer2.Proposer storage proposer = l2Chain.proposers[proposerAddr];
+        require(proposer.reward >= amount, "You can't withdraw more than you have");
+        proposerAddr.transfer(amount);
+        proposer.reward -= amount;
     }
 
     function isProposable(address proposerAddr) public view returns (bool) {
@@ -133,8 +154,7 @@ contract Coordinatable is ZkOptimisticRollUpStore {
     }
 }
 
-/** Dev notes */
 ///  TODO - If the gas usage exceeds the challenge limit, the proposer will get slashed
 ///  TODO - instant withdrawal
 ///  TODO - guarantee of tx including
-///  Some thoughts - Possibility to cost a lot of gas because of the racing for the slash reward
+///  Some thoughts - There exists a possibility of racing condition to get the slash reward
