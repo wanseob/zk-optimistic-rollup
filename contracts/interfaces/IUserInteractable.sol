@@ -2,7 +2,7 @@ pragma solidity >= 0.6.0;
 
 interface IUserInteractable {
     /**
-     * @notice You can use zkopru network by submitting a new homomorphically hiden note.
+     * @notice Users can use zkopru network by submitting a new homomorphically hiden note.
      * @param note Should be same with the MiMC sponge of (amount, fee, pubKey)
      * @param amount Amount to deposit
      * @param fee Amount of fee to give to the coordinator
@@ -16,10 +16,10 @@ interface IUserInteractable {
     ) external payable;
 
     /**
-     * @notice You can withdraw a note when your withdrawal tx is finalized
+     * @notice Users can withdraw a note when your withdrawal tx is finalized
      * @param amount Amount to withdraw out.
      * @param proofHash Hash value of the SNARKs proof of your withdrawal transaction.
-     * @param rootIndex You should submit inclusion proof. Submit which withdrawal root to use.
+     * @param rootIndex Withdrawer should submit inclusion proof. Submit which withdrawal root to use.
      *                  withdrawables[0]: daily snapshot of withdrawable tree
      *                  withdrawables[latest]: the latest withdrawal tree
      *                  withdrawables[1~latest-1]: finalized tree
@@ -39,7 +39,7 @@ interface IUserInteractable {
      * @param amount Amount to withdraw out.
      * @param to Address of the ECDSA signer
      * @param proofHash Hash value of the SNARKs proof of your withdrawal transaction.
-     * @param rootIndex You should submit inclusion proof. Submit which withdrawal root to use.
+     * @param rootIndex Withdrawer should submit inclusion proof. Submit which withdrawal root to use.
      *                  withdrawables[0]: daily snapshot of withdrawable tree
      *                  withdrawables[latest]: the latest withdrawal tree
      *                  withdrawables[1~latest-1]: finalized tree

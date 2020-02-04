@@ -92,7 +92,7 @@ interface IChallengeable {
     function challengeDuplicatedNullifier(bytes32 nullifier, bytes calldata submission) external;
 
     /**
-     * @notice Check the validity of an inclusion refernce for a nullifier.
+     * @notice It checks the validity of an inclusion refernce for a nullifier.
      * @dev Each nullifier should be paired with an inclusion reference which is a root of
      *      utxo tree. For the inclusion reference, You can use finalized roots or recent
      *      blocks' utxo roots. When you use recent blocks' utxo roots, recent REF_DEPTH

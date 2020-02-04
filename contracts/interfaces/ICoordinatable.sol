@@ -2,8 +2,9 @@ pragma solidity >= 0.6.0;
 
 interface ICoordinatable {
     /**
-     * @notice Register as a coordinator. Should pay more than MINIMUM_STAKE
-     *         See 'Configurated.sol'
+     * @notice Coordinator calls this function for the proof of stake.
+     *         Coordinator should pay more than MINIMUM_STAKE. See 'Configurated.sol'
+     *
      */
     function register() external payable;
 

@@ -2,7 +2,7 @@ pragma solidity >= 0.6.0;
 
 interface ISetupWizard {
     /**
-     * @dev Register zk SNARKs verification key to support each transaction type
+     * @dev This configures a zk SNARKs verification key to support the given transaction type
      * @param txType TxType.Transfer / TxType.Withdrawal / TxType.Migration
      * @param numOfInputs Number of inflow UTXOs
      * @param numOfOutputs Number of outflow UTXOs
@@ -19,27 +19,27 @@ interface ISetupWizard {
     ) external;
 
     /**
-     * @dev Register ERC20 to use in this pool
+     * @dev It configures the ERC20 to use in this pool
      */
     function registerERC20(address _erc20) external;
 
     /**
-     * @dev Deploy UserInteractable contract and conect this contract to the deployed.
+     * @dev It connects this proxy contract to the UserInteractable controller.
      */
     function connectUserInteractable(address addr) external;
 
     /**
-     * @dev Deploy RollUpable contract and conect this contract to the deployed.
+     * @dev It connects this proxy contract to the RollUpable controller.
      */
     function connectRollUpable(address addr) external;
 
     /**
-     * @dev Deploy Challengeable contract and conect this contract to the deployed.
+     * @dev It connects this proxy contract to the Challengeable controller.
      */
     function connectChallengeable(address addr) external;
 
     /**
-     * @dev Deploy Migratable contract and conect this contract to the deployed.
+     * @dev It connects this proxy contract to the Migratable controller.
      */
     function connectMigratable(address addr) external;
 
