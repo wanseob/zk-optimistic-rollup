@@ -29,7 +29,7 @@ contract Layer2 is Configurated {
 
 ### Layer2Controller.sol
 
-Proxy contract connected to the other controllers. This controller supports the functions of following contracts
+Layer2Controller is a proxy contract to connect to the following controllers. The controllers can access to the variables in the Layer2.sol
 
 - Coordinatable.sol
 - UserInteractable.sol
