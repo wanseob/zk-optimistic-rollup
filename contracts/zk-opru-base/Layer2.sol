@@ -1,19 +1,22 @@
 pragma solidity >= 0.6.0;
 
-import { Layer2 } from "../libraries/Layer2.sol";
+import "../libraries/Types.sol";
 import { Pairing } from "../libraries/Pairing.sol";
 import { SNARKsVerifier } from "../libraries/SNARKs.sol";
+import { Asset } from "../libraries/Asset.sol";
 import { Configurated } from "./Configurated.sol";
 
 
-contract ZkOptimisticRollUpStore is Configurated {
-    /** Layer1 contract should be assigned by the setup wizard */
-    address public l1Asset;
+contract Layer2 is Configurated {
+    /** Asset contract should be assigned by the setup wizard */
+    Asset public asset;
 
     /** State of the layer2 blockchain is maintained by the optimistic roll up */
-    Layer2.Blockchain public l2Chain;
+    Blockchain public chain;
 
     /** SNARKs verifying keys assigned by the setup wizard for each tx type */
-    // mapping(uint8=>mapping(uint8=>SNARKsVerifier.VerifyingKey)) vks;
     mapping(bytes32=>SNARKsVerifier.VerifyingKey) vks;
+
+    /** Addresses allowed to migrate from. Setup wizard manages the list */
+    mapping(address=>bool) allowedMigrants;
 }

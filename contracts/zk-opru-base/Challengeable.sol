@@ -1,94 +1,30 @@
 pragma solidity >= 0.6.0;
 
 import { Hasher , OPRU, ExtendedOPRU } from "../../node_modules/merkle-tree-rollup/contracts/library/Types.sol";
-import { OPRULib } from "../../node_modules/merkle-tree-rollup/contracts/library/OPRULib.sol";
 import { SMT256 } from "../../node_modules/smt-rollup/contracts/SMT.sol";
-import { ZkOptimisticRollUpStore } from "./ZkOptimisticRollUpStore.sol";
-import { Layer2 } from "../libraries/Layer2.sol";
+import { Layer2 } from "./Layer2.sol";
+import { RollUp } from "./RollUp.sol";
 import { SNARKsVerifier } from "../libraries/SNARKs.sol";
 import { Hash } from "../libraries/Hash.sol";
+import {
+    TxType,
+    Proposal,
+    ChallengeResult,
+    Block,
+    MassDeposit,
+    MassMigration,
+    Migration,
+    Withdrawal,
+    Transfer,
+    Proposer,
+    Proposal,
+    Types
+} from "../libraries/Types.sol";
 
 
-contract Challengeable is ZkOptimisticRollUpStore {
-    using Layer2 for *;
-    using OPRULib for *;
-    using SMT256 for SMT256.OPRU;
+contract Challengeable is RollUp, Layer2 {
+    using Types for *;
     using SNARKsVerifier for SNARKsVerifier.VerifyingKey;
-
-    enum RollUpType { UTXO, Nullifier, Withdrawal}
-
-    event NewProofOfRollUp(RollUpType rollUpType, uint id);
-
-    /** Proof of roll ups */
-    ExtendedOPRU[] proofOfUTXORollUp;
-    SMT256.OPRU[] proofOfNullifierRollUp;
-    OPRU[] proofOfWithdrawalRollUp;
-
-    /** Permission to update Proof of roll up */
-    mapping(uint=>mapping(address=>bool)) permissionUTXORU;
-    mapping(uint=>mapping(address=>bool)) permissionNullifierRU;
-    mapping(uint=>mapping(address=>bool)) permissionWithdrawalRU;
-
-    /** Roll up interaction functions */
-    function newProofOfUTXORollUp(
-        uint startingRoot,
-        uint startingIndex,
-        uint[] calldata initialSiblings
-    ) external {
-        ExtendedOPRU storage opru = proofOfUTXORollUp.push();
-        Hash.mimc().initExtendedOPRU(
-            opru,
-            startingRoot,
-            startingIndex,
-            initialSiblings
-        );
-        uint id = proofOfUTXORollUp.length - 1;
-        permissionUTXORU[id][msg.sender] = true;
-        emit NewProofOfRollUp(RollUpType.UTXO, id);
-    }
-
-    function newProofOfNullifierRollUp(bytes32 prevRoot) external {
-        SMT256.OPRU storage opru = proofOfNullifierRollUp.push();
-        opru.prev = prevRoot;
-        opru.next = prevRoot;
-        opru.mergedLeaves = bytes32(0);
-        uint id = proofOfNullifierRollUp.length - 1;
-        permissionNullifierRU[id][msg.sender] = true;
-        emit NewProofOfRollUp(RollUpType.Nullifier, id);
-    }
-
-    function newProofOfWithdrawalRollUp(
-        uint startingRoot,
-        uint startingIndex
-    ) external {
-        OPRU storage opru = proofOfWithdrawalRollUp.push();
-        opru.start.root = startingRoot;
-        opru.start.index = startingIndex;
-        opru.result.root = startingRoot;
-        opru.result.index = startingIndex;
-        opru.mergedLeaves = bytes32(0);
-        uint id = proofOfWithdrawalRollUp.length - 1;
-        permissionWithdrawalRU[id][msg.sender] = true;
-        emit NewProofOfRollUp(RollUpType.Withdrawal, id);
-    }
-
-    function updateProofOfUTXORollUp(uint id, uint[] calldata leaves) external {
-        require(permissionUTXORU[id][msg.sender], "Not permitted to update this roll up");
-        ExtendedOPRU storage opru = proofOfUTXORollUp[id];
-        Hash.mimc().update(opru, leaves);
-    }
-
-    function updateProofOfNullifierRollUp(uint id, bytes32[] calldata leaves, bytes32[256][] calldata siblings) external {
-        require(permissionNullifierRU[id][msg.sender], "Not permitted to update this roll up");
-        SMT256.OPRU storage opru = proofOfNullifierRollUp[id];
-        opru.update(leaves, siblings);
-    }
-
-    function updateProofOfWithdrawalRollUp(uint id, uint[] calldata initialSiblings, uint[] calldata leaves) external {
-        require(permissionWithdrawalRU[id][msg.sender], "Not permitted to update this roll up");
-        OPRU storage opru = proofOfWithdrawalRollUp[id];
-        Hash.keccak().update(opru, initialSiblings, leaves);
-    }
 
     /**
      * Challenge functions
@@ -110,17 +46,22 @@ contract Challengeable is ZkOptimisticRollUpStore {
         uint[] calldata deposits,
         bytes calldata
     ) external {
-        Layer2.Block memory submission = Layer2.blockFromCalldataAt(2);
-        Layer2.ChallengeResult memory result = _challengeResultOfUTXORollUp(submission, utxoRollUpId, deposits);
+        Block memory submission = Types.blockFromCalldataAt(2);
+        ChallengeResult memory result = _challengeResultOfUTXORollUp(submission, utxoRollUpId, deposits);
         _execute(result);
     }
 
     function challengeNullifierRollUp(
+        uint nullifierRollUpId,
         bytes32[256][] calldata siblings,
         bytes calldata
     ) external {
-        Layer2.Block memory submission = Layer2.blockFromCalldataAt(1);
-        Layer2.ChallengeResult memory result = _challengeResultOfNullifierRollUp(submission, siblings);
+        Block memory submission = Types.blockFromCalldataAt(2);
+        ChallengeResult memory result = _challengeResultOfNullifierRollUp(
+            submission,
+            nullifierRollUpId,
+            siblings
+        );
         _execute(result);
     }
 
@@ -128,26 +69,26 @@ contract Challengeable is ZkOptimisticRollUpStore {
         uint[] calldata deposits,
         bytes calldata
     ) external {
-        Layer2.Block memory submission = Layer2.blockFromCalldataAt(1);
-        Layer2.ChallengeResult memory result = _challengeResultOfDepositRoot(submission, deposits);
+        Block memory submission = Types.blockFromCalldataAt(1);
+        ChallengeResult memory result = _challengeResultOfDepositRoot(submission, deposits);
         _execute(result);
     }
 
     function challengeTransferRoot(bytes calldata) external {
-        Layer2.Block memory submission = Layer2.blockFromCalldataAt(0);
-        Layer2.ChallengeResult memory result = _challengeResultOfTransferRoot(submission);
+        Block memory submission = Types.blockFromCalldataAt(0);
+        ChallengeResult memory result = _challengeResultOfTransferRoot(submission);
         _execute(result);
     }
 
     function challengeWithdrawalRoot(bytes calldata) external {
-        Layer2.Block memory submission = Layer2.blockFromCalldataAt(0);
-        Layer2.ChallengeResult memory result = _challengeResultOfWithdrawalRoot(submission);
+        Block memory submission = Types.blockFromCalldataAt(0);
+        ChallengeResult memory result = _challengeResultOfWithdrawalRoot(submission);
         _execute(result);
     }
 
     function challengeTotalFee(bytes calldata) external {
-        Layer2.Block memory submission = Layer2.blockFromCalldataAt(0);
-        Layer2.ChallengeResult memory result = _challengeResultOfTotalFee(submission);
+        Block memory submission = Types.blockFromCalldataAt(0);
+        ChallengeResult memory result = _challengeResultOfTotalFee(submission);
         _execute(result);
     }
 
@@ -157,8 +98,8 @@ contract Challengeable is ZkOptimisticRollUpStore {
         uint refIndex,
         bytes calldata
     ) external {
-        Layer2.Block memory submission = Layer2.blockFromCalldataAt(3);
-        Layer2.ChallengeResult memory result = _challengeResultOfInclusion(
+        Block memory submission = Types.blockFromCalldataAt(3);
+        ChallengeResult memory result = _challengeResultOfInclusion(
             submission,
             isTransfer,
             txIndex,
@@ -168,14 +109,14 @@ contract Challengeable is ZkOptimisticRollUpStore {
     }
 
     function challengeTransfer(uint txIndex, bytes calldata) external {
-        Layer2.Block memory submission = Layer2.blockFromCalldataAt(1);
-        Layer2.ChallengeResult memory result = _challengeResultOfTransfer(submission, txIndex);
+        Block memory submission = Types.blockFromCalldataAt(1);
+        ChallengeResult memory result = _challengeResultOfTransfer(submission, txIndex);
         _execute(result);
     }
 
     function challengeWithdrawal(uint withdrawalIndex, bytes calldata) external {
-        Layer2.Block memory submission = Layer2.blockFromCalldataAt(1);
-        Layer2.ChallengeResult memory result = _challengeResultOfWithdrawal(submission, withdrawalIndex);
+        Block memory submission = Types.blockFromCalldataAt(1);
+        ChallengeResult memory result = _challengeResultOfWithdrawal(submission, withdrawalIndex);
         _execute(result);
     }
 
@@ -184,14 +125,14 @@ contract Challengeable is ZkOptimisticRollUpStore {
         bytes32[256] calldata sibling,
         bytes calldata
     ) external {
-        Layer2.Block memory submission = Layer2.blockFromCalldataAt(2);
-        Layer2.ChallengeResult memory result = _challengeResultOfUsedNullifier(submission, nullifier, sibling);
+        Block memory submission = Types.blockFromCalldataAt(2);
+        ChallengeResult memory result = _challengeResultOfUsedNullifier(submission, nullifier, sibling);
         _execute(result);
     }
 
     function challengeDuplicatedNullifier(bytes32 nullifier, bytes calldata) external {
-        Layer2.Block memory submission = Layer2.blockFromCalldataAt(1);
-        Layer2.ChallengeResult memory result = _challengeResultOfDuplicatedNullifier(submission, nullifier);
+        Block memory submission = Types.blockFromCalldataAt(1);
+        ChallengeResult memory result = _challengeResultOfDuplicatedNullifier(submission, nullifier);
         _execute(result);
     }
 
@@ -209,17 +150,18 @@ contract Challengeable is ZkOptimisticRollUpStore {
             string memory message
         )
     {
-        Layer2.Block memory submission = Layer2.blockFromCalldataAt(2);
-        Layer2.ChallengeResult memory result = _challengeResultOfUTXORollUp(submission, utxoRollUpId, deposits);
+        Block memory submission = Types.blockFromCalldataAt(2);
+        ChallengeResult memory result = _challengeResultOfUTXORollUp(submission, utxoRollUpId, deposits);
         return (result.slash, result.proposalId, result.proposer, result.message);
     }
 
     function dryChallengeNullifierRollUp(
+        uint nullifierRollUpId,
         bytes32[256][] calldata siblings,
         bytes calldata
     )
         external
-        pure
+        view
         returns (
             bool slash,
             bytes32 proposalId,
@@ -227,8 +169,12 @@ contract Challengeable is ZkOptimisticRollUpStore {
             string memory message
         )
     {
-        Layer2.Block memory submission = Layer2.blockFromCalldataAt(1);
-        Layer2.ChallengeResult memory result = _challengeResultOfNullifierRollUp(submission, siblings);
+        Block memory submission = Types.blockFromCalldataAt(2);
+        ChallengeResult memory result = _challengeResultOfNullifierRollUp(
+            submission,
+            nullifierRollUpId,
+            siblings
+        );
         return (result.slash, result.proposalId, result.proposer, result.message);
     }
 
@@ -242,8 +188,8 @@ contract Challengeable is ZkOptimisticRollUpStore {
             string memory message
         )
     {
-        Layer2.Block memory submission = Layer2.blockFromCalldataAt(1);
-        Layer2.ChallengeResult memory result = _challengeResultOfDepositRoot(submission, deposits);
+        Block memory submission = Types.blockFromCalldataAt(1);
+        ChallengeResult memory result = _challengeResultOfDepositRoot(submission, deposits);
         return (result.slash, result.proposalId, result.proposer, result.message);
     }
 
@@ -257,8 +203,8 @@ contract Challengeable is ZkOptimisticRollUpStore {
             string memory message
         )
     {
-        Layer2.Block memory submission = Layer2.blockFromCalldataAt(0);
-        Layer2.ChallengeResult memory result = _challengeResultOfTransferRoot(submission);
+        Block memory submission = Types.blockFromCalldataAt(0);
+        ChallengeResult memory result = _challengeResultOfTransferRoot(submission);
         return (result.slash, result.proposalId, result.proposer, result.message);
     }
 
@@ -272,8 +218,8 @@ contract Challengeable is ZkOptimisticRollUpStore {
             string memory message
         )
     {
-        Layer2.Block memory submission = Layer2.blockFromCalldataAt(0);
-        Layer2.ChallengeResult memory result = _challengeResultOfWithdrawalRoot(submission);
+        Block memory submission = Types.blockFromCalldataAt(0);
+        ChallengeResult memory result = _challengeResultOfWithdrawalRoot(submission);
         return (result.slash, result.proposalId, result.proposer, result.message);
     }
 
@@ -287,8 +233,8 @@ contract Challengeable is ZkOptimisticRollUpStore {
             string memory message
         )
     {
-        Layer2.Block memory submission = Layer2.blockFromCalldataAt(0);
-        Layer2.ChallengeResult memory result = _challengeResultOfMigrationRoot(submission);
+        Block memory submission = Types.blockFromCalldataAt(0);
+        ChallengeResult memory result = _challengeResultOfMigrationRoot(submission);
         return (result.slash, result.proposalId, result.proposer, result.message);
     }
 
@@ -302,8 +248,8 @@ contract Challengeable is ZkOptimisticRollUpStore {
             string memory message
         )
     {
-        Layer2.Block memory submission = Layer2.blockFromCalldataAt(0);
-        Layer2.ChallengeResult memory result = _challengeResultOfTotalFee(submission);
+        Block memory submission = Types.blockFromCalldataAt(0);
+        ChallengeResult memory result = _challengeResultOfTotalFee(submission);
         return (result.slash, result.proposalId, result.proposer, result.message);
     }
 
@@ -322,8 +268,8 @@ contract Challengeable is ZkOptimisticRollUpStore {
             string memory message
         )
     {
-        Layer2.Block memory submission = Layer2.blockFromCalldataAt(3);
-        Layer2.ChallengeResult memory result = _challengeResultOfInclusion(
+        Block memory submission = Types.blockFromCalldataAt(3);
+        ChallengeResult memory result = _challengeResultOfInclusion(
             submission,
             isTransfer,
             txIndex,
@@ -342,8 +288,8 @@ contract Challengeable is ZkOptimisticRollUpStore {
             string memory message
         )
     {
-        Layer2.Block memory submission = Layer2.blockFromCalldataAt(1);
-        Layer2.ChallengeResult memory result = _challengeResultOfTransfer(submission, txIndex);
+        Block memory submission = Types.blockFromCalldataAt(1);
+        ChallengeResult memory result = _challengeResultOfTransfer(submission, txIndex);
         return (result.slash, result.proposalId, result.proposer, result.message);
     }
 
@@ -357,8 +303,8 @@ contract Challengeable is ZkOptimisticRollUpStore {
             string memory message
         )
     {
-        Layer2.Block memory submission = Layer2.blockFromCalldataAt(1);
-        Layer2.ChallengeResult memory result = _challengeResultOfWithdrawal(submission, withdrawalIndex);
+        Block memory submission = Types.blockFromCalldataAt(1);
+        ChallengeResult memory result = _challengeResultOfWithdrawal(submission, withdrawalIndex);
         return (result.slash, result.proposalId, result.proposer, result.message);
     }
 
@@ -372,8 +318,8 @@ contract Challengeable is ZkOptimisticRollUpStore {
             string memory message
         )
     {
-        Layer2.Block memory submission = Layer2.blockFromCalldataAt(1);
-        Layer2.ChallengeResult memory result = _challengeResultOfMigration(submission, migrationIndex);
+        Block memory submission = Types.blockFromCalldataAt(1);
+        ChallengeResult memory result = _challengeResultOfMigration(submission, migrationIndex);
         return (result.slash, result.proposalId, result.proposer, result.message);
     }
 
@@ -391,8 +337,8 @@ contract Challengeable is ZkOptimisticRollUpStore {
             string memory message
         )
     {
-        Layer2.Block memory submission = Layer2.blockFromCalldataAt(2);
-        Layer2.ChallengeResult memory result = _challengeResultOfUsedNullifier(submission, nullifier, sibling);
+        Block memory submission = Types.blockFromCalldataAt(2);
+        ChallengeResult memory result = _challengeResultOfUsedNullifier(submission, nullifier, sibling);
         return (result.slash, result.proposalId, result.proposer, result.message);
     }
 
@@ -406,14 +352,14 @@ contract Challengeable is ZkOptimisticRollUpStore {
             string memory message
         )
     {
-        Layer2.Block memory submission = Layer2.blockFromCalldataAt(1);
-        Layer2.ChallengeResult memory result = _challengeResultOfDuplicatedNullifier(submission, nullifier);
+        Block memory submission = Types.blockFromCalldataAt(1);
+        ChallengeResult memory result = _challengeResultOfDuplicatedNullifier(submission, nullifier);
         return (result.slash, result.proposalId, result.proposer, result.message);
     }
 
     /// TODO temporal calculation
     function estimateChallengeCost(bytes calldata) external pure returns (uint256 maxCost) {
-        Layer2.Block memory submission = Layer2.blockFromCalldataAt(0);
+        Block memory submission = Types.blockFromCalldataAt(0);
         return submission.maxChallengeCost();
     }
 
@@ -424,17 +370,17 @@ contract Challengeable is ZkOptimisticRollUpStore {
      *      recent block's utxo roots. For the latter, recent REF_DEPTH of utxo
      *      roots are available and it costs. It costs maximum 1800*REF_DEPTH gas
      *      to validating an inclusion reference during a TX challenge process.
-     * @param l2BlockHash Layer2 block's hash where to start searching from.
+     * @param l2BlockHash block's hash where to start searching from.
      * @param ref Utxo root which includes the nullifier's origin.
      */
     function isValidRef(bytes32 l2BlockHash, uint256 ref) public view returns (bool) {
-        if (l2Chain.finalizedUTXOs[ref]) {
+        if (Layer2.chain.finalizedUTXOs[ref]) {
             return true;
         }
         bytes32 parentBlock = l2BlockHash;
         for (uint i = 0; i < REF_DEPTH; i++) {
-            parentBlock = l2Chain.parentOf[parentBlock];
-            if (l2Chain.utxoRootOf[parentBlock] == ref) {
+            parentBlock = Layer2.chain.parentOf[parentBlock];
+            if (Layer2.chain.utxoRootOf[parentBlock] == ref) {
                 return true;
             }
         }
@@ -443,11 +389,11 @@ contract Challengeable is ZkOptimisticRollUpStore {
 
     /** Internal functions to help reusable clean code */
     function _getVerifyingKey(
-        Layer2.TxType txType,
+        TxType txType,
         uint8 numberOfInputs,
         uint8 numberOfOutputs
     ) internal view returns (SNARKsVerifier.VerifyingKey memory) {
-        return vks[Layer2.getSNARKsSignature(txType, numberOfInputs, numberOfOutputs)];
+        return vks[Types.getSNARKsSignature(txType, numberOfInputs, numberOfOutputs)];
     }
 
     function _exist(SNARKsVerifier.VerifyingKey memory vk) internal pure returns (bool) {
@@ -458,7 +404,7 @@ contract Challengeable is ZkOptimisticRollUpStore {
         }
     }
 
-    function _checkChallengeCondition(Layer2.Proposal storage proposal) internal view {
+    function _checkChallengeCondition(Proposal storage proposal) internal view {
         /// Check the optimistic roll up is in the challenge period
         require(proposal.challengeDue > block.number, "You missed the challenge period");
         /// Check it is already slashed
@@ -468,19 +414,21 @@ contract Challengeable is ZkOptimisticRollUpStore {
     }
 
     function _forfeitAndReward(address proposerAddr, address challenger) internal {
-        Layer2.Proposer storage proposer = l2Chain.proposers[proposerAddr];
+        Proposer storage proposer = Layer2.chain.proposers[proposerAddr];
         /// Reward
         uint challengeReward = proposer.stake * 2 / 3;
         payable(challenger).transfer(challengeReward);
         /// Forfeit
         proposer.stake = 0;
         proposer.reward = 0;
+        /// Delete proposer
+        delete Layer2.chain.proposers[proposerAddr];
     }
 
-    function _execute(Layer2.ChallengeResult memory result) private {
+    function _execute(ChallengeResult memory result) private {
         require(result.slash, result.message);
 
-        Layer2.Proposal storage proposal = l2Chain.proposals[result.proposalId];
+        Proposal storage proposal = Layer2.chain.proposals[result.proposalId];
         /// Check basic challenge conditions
         _checkChallengeCondition(proposal);
         /// Since the challenge satisfies the given conditions, slash the optimistic rollup proposer
@@ -490,10 +438,14 @@ contract Challengeable is ZkOptimisticRollUpStore {
     }
 
     /** Computes challenge here */
-    function _challengeResultOfUTXORollUp(Layer2.Block memory submission, uint utxoRollUpId, uint[] memory deposits)
+    function _challengeResultOfUTXORollUp(
+        Block memory submission,
+        uint utxoRollUpId,
+        uint[] memory deposits
+    )
         private
         view
-        returns (Layer2.ChallengeResult memory)
+        returns (ChallengeResult memory)
     {
         require(deposits.root() == submission.header.depositRoot, "Submitted invalid deposit data");
 
@@ -501,7 +453,7 @@ contract Challengeable is ZkOptimisticRollUpStore {
         uint numOfItems = 0;
         numOfItems += deposits.length;
         for (uint i = 0; i < submission.body.transfers.length; i++) {
-            Layer2.Transfer memory transfer = submission.body.transfers[i];
+            Transfer memory transfer = submission.body.transfers[i];
             numOfItems += transfer.outputs.length;
         }
 
@@ -513,7 +465,7 @@ contract Challengeable is ZkOptimisticRollUpStore {
             outputs[index++] = deposits[i];
         }
         for (uint i = 0; i < submission.body.transfers.length; i++) {
-            Layer2.Transfer memory transfer = submission.body.transfers[i];
+            Transfer memory transfer = submission.body.transfers[i];
             for (uint j = 0; j < transfer.outputs.length; j++) {
                 outputs[index++] = uint(transfer.outputs[j]);
             }
@@ -533,7 +485,7 @@ contract Challengeable is ZkOptimisticRollUpStore {
         }
         /// Submitted invalid next output index
         if (submission.header.nextUTXOIndex != (startingIndex + numOfItems)) {
-            return Layer2.ChallengeResult(
+            return ChallengeResult(
                 true,
                 submission.id,
                 submission.header.proposer,
@@ -542,7 +494,7 @@ contract Challengeable is ZkOptimisticRollUpStore {
         }
 
         /// Check validity of the roll up using the storage based MiMC roll up
-        ExtendedOPRU memory proof = proofOfUTXORollUp[utxoRollUpId];
+        ExtendedOPRU memory proof = RollUp.proof.ofUTXO[utxoRollUpId];
         bool isValidRollUp = proof.opru.verify(
             uint(startingRoot),
             startingIndex,
@@ -550,7 +502,7 @@ contract Challengeable is ZkOptimisticRollUpStore {
             bytes32(0).mergeLeaves(outputs)
         );
 
-        return Layer2.ChallengeResult(
+        return ChallengeResult(
             !isValidRollUp,
             submission.id,
             submission.header.proposer,
@@ -560,32 +512,33 @@ contract Challengeable is ZkOptimisticRollUpStore {
 
     /// Possibility to cost a lot of failure gases because of the 'already slashed' submissions
     function _challengeResultOfNullifierRollUp(
-        Layer2.Block memory submission,
+        Block memory submission,
+        uint nullifierRollUpId,
         bytes32[256][] memory siblings
     )
         private
-        pure
-        returns (Layer2.ChallengeResult memory)
+        view
+        returns (ChallengeResult memory)
     {
         /// Assign a new array
         bytes32[] memory nullifiers = new bytes32[](siblings.length);
         /// Get outputs to append
         uint index = 0;
         for (uint i = 0; i < submission.body.transfers.length; i++) {
-            Layer2.Transfer memory transfer = submission.body.transfers[i];
+            Transfer memory transfer = submission.body.transfers[i];
             for (uint j = 0; j < transfer.nullifiers.length; j++) {
                 nullifiers[index++] = transfer.nullifiers[j];
             }
         }
         for (uint i = 0; i < submission.body.transfers.length; i++) {
-            Layer2.Withdrawal memory withdrawal = submission.body.withdrawals[i];
+            Withdrawal memory withdrawal = submission.body.withdrawals[i];
             for (uint j = 0; j < withdrawal.nullifiers.length; j++) {
                 nullifiers[index++] = withdrawal.nullifiers[j];
             }
         }
 
         if (index != siblings.length) {
-            return Layer2.ChallengeResult(
+            return ChallengeResult(
                 false,
                 submission.id,
                 submission.header.proposer,
@@ -593,23 +546,25 @@ contract Challengeable is ZkOptimisticRollUpStore {
             );
         }
         /// Get rolled up root
-        bytes32 correctRoot = SMT256.rollUp(
+        SMT256.OPRU memory proof = RollUp.proof.ofNullifier[nullifierRollUpId];
+        bool isValidRollUp = proof.verify(
             submission.header.prevNullifierRoot,
-            nullifiers,
-            siblings
+            submission.header.nextNullifierRoot,
+            bytes32(0).mergeLeaves(nullifiers)
         );
-        return Layer2.ChallengeResult(
-            correctRoot != submission.header.nextNullifierRoot,
+
+        return ChallengeResult(
+            !isValidRollUp,
             submission.id,
             submission.header.proposer,
             "Nullifier roll up"
         );
     }
 
-    function _challengeResultOfWithdrawalRollUp(Layer2.Block memory submission, uint withdrawalRollUpId)
+    function _challengeResultOfWithdrawalRollUp(Block memory submission, uint withdrawalRollUpId)
         private
         view
-        returns (Layer2.ChallengeResult memory)
+        returns (ChallengeResult memory)
     {
         /// Get total outputs
         uint numOfWithdrawals = submission.body.withdrawals.length;
@@ -639,7 +594,7 @@ contract Challengeable is ZkOptimisticRollUpStore {
         }
         /// Submitted invalid index of the next withdrawal tree
         if (submission.header.nextWithdrawalIndex != (startingIndex + numOfWithdrawals)) {
-            return Layer2.ChallengeResult(
+            return ChallengeResult(
                 true,
                 submission.id,
                 submission.header.proposer,
@@ -648,7 +603,7 @@ contract Challengeable is ZkOptimisticRollUpStore {
         }
 
         /// Check validity of the roll up using the storage based MiMC roll up
-        OPRU memory proof = proofOfWithdrawalRollUp[withdrawalRollUpId];
+        OPRU memory proof = RollUp.proof.ofWithdrawal[withdrawalRollUpId];
         bool isValidRollUp = proof.verify(
             uint(startingRoot),
             startingIndex,
@@ -656,29 +611,29 @@ contract Challengeable is ZkOptimisticRollUpStore {
             bytes32(0).mergeLeaves(withdrawalLeaves)
         );
 
-        return Layer2.ChallengeResult(
+        return ChallengeResult(
             !isValidRollUp,
             submission.id,
             submission.header.proposer,
-            "UTXO roll up"
+            "Withdrawal roll up"
         );
     }
 
     function _challengeResultOfDepositRoot(
-        Layer2.Block memory submission,
+        Block memory submission,
         uint[] memory deposits
     )
         private
         view
-        returns (Layer2.ChallengeResult memory)
+        returns (ChallengeResult memory)
     {
         uint index = 0;
         bytes32 merged;
         for (uint i = 0; i < submission.body.depositIds.length; i++) {
             merged = bytes32(0);
-            Layer2.MassDeposit storage depositsToAdd = l2Chain.depositQueue[submission.body.depositIds[i]];
+            MassDeposit storage depositsToAdd = Layer2.chain.depositQueue[submission.body.depositIds[i]];
             if (!depositsToAdd.committed) {
-                return Layer2.ChallengeResult(
+                return ChallengeResult(
                     true,
                     submission.id,
                     submission.header.proposer,
@@ -692,7 +647,7 @@ contract Challengeable is ZkOptimisticRollUpStore {
             require(merged == depositsToAdd.merged, "Submitted invalid set of deposits");
         }
         require(index == deposits.length, "Submitted extra deposits");
-        return Layer2.ChallengeResult(
+        return ChallengeResult(
             submission.header.depositRoot != deposits.root(),
             submission.id,
             submission.header.proposer,
@@ -701,13 +656,13 @@ contract Challengeable is ZkOptimisticRollUpStore {
     }
 
     function _challengeResultOfTransferRoot(
-        Layer2.Block memory submission
+        Block memory submission
     )
         private
         pure
-        returns (Layer2.ChallengeResult memory)
+        returns (ChallengeResult memory)
     {
-        return Layer2.ChallengeResult(
+        return ChallengeResult(
             submission.header.transferRoot != submission.body.transfers.root(),
             submission.id,
             submission.header.proposer,
@@ -716,13 +671,13 @@ contract Challengeable is ZkOptimisticRollUpStore {
     }
 
     function _challengeResultOfWithdrawalRoot(
-        Layer2.Block memory submission
+        Block memory submission
     )
         private
         pure
-        returns (Layer2.ChallengeResult memory)
+        returns (ChallengeResult memory)
     {
-        return Layer2.ChallengeResult(
+        return ChallengeResult(
             submission.header.withdrawalRoot != submission.body.withdrawals.root(),
             submission.id,
             submission.header.proposer,
@@ -731,13 +686,13 @@ contract Challengeable is ZkOptimisticRollUpStore {
     }
 
     function _challengeResultOfMigrationRoot(
-        Layer2.Block memory submission
+        Block memory submission
     )
         private
         pure
-        returns (Layer2.ChallengeResult memory)
+        returns (ChallengeResult memory)
     {
-        return Layer2.ChallengeResult(
+        return ChallengeResult(
             submission.header.migrationRoot != submission.body.migrations.root(),
             submission.id,
             submission.header.proposer,
@@ -746,11 +701,11 @@ contract Challengeable is ZkOptimisticRollUpStore {
     }
 
     function _challengeResultOfTotalFee(
-        Layer2.Block memory submission
+        Block memory submission
     )
         private
         pure
-        returns (Layer2.ChallengeResult memory)
+        returns (ChallengeResult memory)
     {
         uint totalFee = 0;
         for (uint i = 0; i < submission.body.transfers.length; i ++) {
@@ -762,7 +717,7 @@ contract Challengeable is ZkOptimisticRollUpStore {
         for (uint i = 0; i < submission.body.migrations.length; i ++) {
             totalFee += submission.body.migrations[i].fee;
         }
-        return Layer2.ChallengeResult(
+        return ChallengeResult(
             totalFee != submission.header.fee,
             submission.id,
             submission.header.proposer,
@@ -771,25 +726,25 @@ contract Challengeable is ZkOptimisticRollUpStore {
     }
 
     function _challengeResultOfInclusion(
-        Layer2.Block memory submission,
+        Block memory submission,
         bool isTransfer,
         uint txIndex,
         uint refIndex
     )
         private
         view
-        returns (Layer2.ChallengeResult memory)
+        returns (ChallengeResult memory)
     {
         uint ref;
         if (isTransfer) {
-            Layer2.Transfer memory transfer = submission.body.transfers[txIndex];
+            Transfer memory transfer = submission.body.transfers[txIndex];
             ref = transfer.inclusionRefs[refIndex];
         } else {
-            Layer2.Withdrawal memory withdrawal = submission.body.withdrawals[txIndex];
+            Withdrawal memory withdrawal = submission.body.withdrawals[txIndex];
             ref = withdrawal.inclusionRefs[refIndex];
         }
 
-        return Layer2.ChallengeResult(
+        return ChallengeResult(
             !isValidRef(submission.header.hash(), ref),
             submission.id,
             submission.header.proposer,
@@ -798,21 +753,21 @@ contract Challengeable is ZkOptimisticRollUpStore {
     }
 
     function _challengeResultOfTransfer(
-        Layer2.Block memory submission,
+        Block memory submission,
         uint txIndex
     )
         private
         view
-        returns (Layer2.ChallengeResult memory)
+        returns (ChallengeResult memory)
     {
-        Layer2.Transfer memory transfer = submission.body.transfers[txIndex];
+        Transfer memory transfer = submission.body.transfers[txIndex];
 
         /// Slash if the length of the array is not same with the tx metadata
         if (
             transfer.numberOfInputs != transfer.inclusionRefs.length ||
             transfer.numberOfInputs != transfer.nullifiers.length
         ) {
-            return Layer2.ChallengeResult(
+            return ChallengeResult(
                 true,
                 submission.id,
                 submission.header.proposer,
@@ -821,12 +776,12 @@ contract Challengeable is ZkOptimisticRollUpStore {
         }
         /// Slash if the transaction type is not supported
         SNARKsVerifier.VerifyingKey memory vk = _getVerifyingKey(
-            Layer2.TxType.Transfer,
+            TxType.Transfer,
             transfer.numberOfInputs,
             transfer.numberOfOutputs
         );
         if (!_exist(vk)) {
-            return Layer2.ChallengeResult(
+            return ChallengeResult(
                 true,
                 submission.id,
                 submission.header.proposer,
@@ -848,7 +803,7 @@ contract Challengeable is ZkOptimisticRollUpStore {
         }
         SNARKsVerifier.Proof memory proof = SNARKsVerifier.proof(transfer.proof);
         if (!vk.zkSNARKs(inputs, proof)) {
-            return Layer2.ChallengeResult(
+            return ChallengeResult(
                 true,
                 submission.id,
                 submission.header.proposer,
@@ -856,7 +811,7 @@ contract Challengeable is ZkOptimisticRollUpStore {
             );
         }
         /// Passed all tests. It's a valid transaction. Challenge is not accepted
-        return Layer2.ChallengeResult(
+        return ChallengeResult(
             false,
             submission.id,
             submission.header.proposer,
@@ -865,21 +820,21 @@ contract Challengeable is ZkOptimisticRollUpStore {
     }
 
     function _challengeResultOfWithdrawal(
-        Layer2.Block memory submission,
+        Block memory submission,
         uint withdrawalIndex
     )
         private
         view
-        returns (Layer2.ChallengeResult memory)
+        returns (ChallengeResult memory)
     {
-        Layer2.Withdrawal memory withdrawal = submission.body.withdrawals[withdrawalIndex];
+        Withdrawal memory withdrawal = submission.body.withdrawals[withdrawalIndex];
 
         /// Slash if the length of the array is not same with the tx metadata
         if (
             withdrawal.numberOfInputs != withdrawal.inclusionRefs.length ||
             withdrawal.numberOfInputs != withdrawal.nullifiers.length
         ) {
-            return Layer2.ChallengeResult(
+            return ChallengeResult(
                 true,
                 submission.id,
                 submission.header.proposer,
@@ -888,12 +843,12 @@ contract Challengeable is ZkOptimisticRollUpStore {
         }
         /// Slash if the transaction type is not supported
         SNARKsVerifier.VerifyingKey memory vk = _getVerifyingKey(
-            Layer2.TxType.Withdrawal,
+            TxType.Withdrawal,
             withdrawal.numberOfInputs,
             0
         );
         if (!_exist(vk)) {
-            return Layer2.ChallengeResult(
+            return ChallengeResult(
                 true,
                 submission.id,
                 submission.header.proposer,
@@ -914,7 +869,7 @@ contract Challengeable is ZkOptimisticRollUpStore {
         }
         SNARKsVerifier.Proof memory proof = SNARKsVerifier.proof(withdrawal.proof);
         if (!vk.zkSNARKs(inputs, proof)) {
-            return Layer2.ChallengeResult(
+            return ChallengeResult(
                 true,
                 submission.id,
                 submission.header.proposer,
@@ -922,7 +877,7 @@ contract Challengeable is ZkOptimisticRollUpStore {
             );
         }
         /// Passed all tests. It's a valid withdrawal. Challenge is not accepted
-        return Layer2.ChallengeResult(
+        return ChallengeResult(
             false,
             submission.id,
             submission.header.proposer,
@@ -931,21 +886,21 @@ contract Challengeable is ZkOptimisticRollUpStore {
     }
 
     function _challengeResultOfMigration(
-        Layer2.Block memory submission,
+        Block memory submission,
         uint migrationIndex
     )
         private
         view
-        returns (Layer2.ChallengeResult memory)
+        returns (ChallengeResult memory)
     {
-        Layer2.Migration memory migration = submission.body.migrations[migrationIndex];
+        Migration memory migration = submission.body.migrations[migrationIndex];
 
         /// Slash if the length of the array is not same with the tx metadata
         if (
             migration.numberOfInputs != migration.inclusionRefs.length ||
             migration.numberOfInputs != migration.nullifiers.length
         ) {
-            return Layer2.ChallengeResult(
+            return ChallengeResult(
                 true,
                 submission.id,
                 submission.header.proposer,
@@ -954,12 +909,12 @@ contract Challengeable is ZkOptimisticRollUpStore {
         }
         /// Slash if the transaction type is not supported
         SNARKsVerifier.VerifyingKey memory vk = _getVerifyingKey(
-            Layer2.TxType.Migration,
+            TxType.Migration,
             migration.numberOfInputs,
             0
         );
         if (!_exist(vk)) {
-            return Layer2.ChallengeResult(
+            return ChallengeResult(
                 true,
                 submission.id,
                 submission.header.proposer,
@@ -982,7 +937,7 @@ contract Challengeable is ZkOptimisticRollUpStore {
         }
         SNARKsVerifier.Proof memory proof = SNARKsVerifier.proof(migration.proof);
         if (!vk.zkSNARKs(inputs, proof)) {
-            return Layer2.ChallengeResult(
+            return ChallengeResult(
                 true,
                 submission.id,
                 submission.header.proposer,
@@ -990,7 +945,7 @@ contract Challengeable is ZkOptimisticRollUpStore {
             );
         }
         /// Passed all tests. It's a valid migration. Challenge is not accepted
-        return Layer2.ChallengeResult(
+        return ChallengeResult(
             false,
             submission.id,
             submission.header.proposer,
@@ -999,13 +954,13 @@ contract Challengeable is ZkOptimisticRollUpStore {
     }
 
     function _challengeResultOfUsedNullifier(
-        Layer2.Block memory submission,
+        Block memory submission,
         bytes32 nullifier,
         bytes32[256] memory sibling
     )
         private
         pure
-        returns (Layer2.ChallengeResult memory)
+        returns (ChallengeResult memory)
     {
         bytes32[] memory nullifiers = new bytes32[](1);
         bytes32[256][] memory siblings = new bytes32[256][](1);
@@ -1016,7 +971,7 @@ contract Challengeable is ZkOptimisticRollUpStore {
             nullifiers,
             siblings
         );
-        return Layer2.ChallengeResult(
+        return ChallengeResult(
             updatedRoot == submission.header.prevNullifierRoot,
             submission.id,
             submission.header.proposer,
@@ -1025,17 +980,17 @@ contract Challengeable is ZkOptimisticRollUpStore {
     }
 
     function _challengeResultOfDuplicatedNullifier(
-        Layer2.Block memory submission,
+        Block memory submission,
         bytes32 nullifier
     )
         private
         pure
-        returns (Layer2.ChallengeResult memory)
+        returns (ChallengeResult memory)
     {
 
         uint count = 0;
         for (uint i = 0; i < submission.body.transfers.length; i++) {
-            Layer2.Transfer memory transfer = submission.body.transfers[i];
+            Transfer memory transfer = submission.body.transfers[i];
             for (uint j = 0; j < transfer.nullifiers.length; j++) {
                 /// Found matched nullifier
                 if (transfer.nullifiers[j] == nullifier) count++;
@@ -1044,7 +999,7 @@ contract Challengeable is ZkOptimisticRollUpStore {
             if (count >= 2) break;
         }
         for (uint i = 0; i < submission.body.transfers.length; i++) {
-            Layer2.Withdrawal memory withdrawal = submission.body.withdrawals[i];
+            Withdrawal memory withdrawal = submission.body.withdrawals[i];
             for (uint j = 0; j < withdrawal.nullifiers.length; j++) {
                 /// Found matched nullifier
                 if (withdrawal.nullifiers[j] == nullifier) count++;
@@ -1052,7 +1007,7 @@ contract Challengeable is ZkOptimisticRollUpStore {
             }
             if (count >= 2) break;
         }
-        return Layer2.ChallengeResult(
+        return ChallengeResult(
             count >= 2,
             submission.id,
             submission.header.proposer,

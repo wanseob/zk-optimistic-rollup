@@ -1,158 +1,156 @@
 pragma solidity >= 0.6.0;
+enum TxType { Transfer, Withdrawal, Migration }
 
-library Layer2 {
-    enum TxType { Transfer, Withdrawal, Migration }
+struct Blockchain {
+    bytes32 latest;
+    /** For inclusion reference */
+    mapping(bytes32=>bytes32) parentOf; // childBlockHash=>parentBlockHash
+    mapping(bytes32=>uint256) utxoRootOf; // header => utxoRoot
+    mapping(uint256=>bool) finalizedUTXOs; // all finalized utxoRoots
+    /** For coordinating */
+    mapping(address=>Proposer) proposers;
+    mapping(bytes32=>Proposal) proposals;
+    /** For deposit */
+    MassDeposit[] depositQueue;
+    /** For withdrawal */
+    Withdrawable[] withdrawables; /// 0: daily snapshot of the latest withdrawable tree
+    uint256 snapshotTimestamp;
+    mapping(bytes32=>bool) withdrawn;
+    /** For migrations */
+    MassMigration[] migrations;
+}
 
-    struct Blockchain {
-        bytes32 latest;
-        /** For inclusion reference */
-        mapping(bytes32=>bytes32) parentOf; // childBlockHash=>parentBlockHash
-        mapping(bytes32=>uint256) utxoRootOf; // header => utxoRoot
-        mapping(uint256=>bool) finalizedUTXOs; // all finalized utxoRoots
-        /** For coordinating */
-        mapping(address=>Proposer) proposers;
-        mapping(bytes32=>Proposal) proposals;
-        /** For deposit */
-        MassDeposit[] depositQueue;
-        /** For withdrawal */
-        Withdrawable[] withdrawables; /// 0: daily snapshot of the latest withdrawable tree
-        uint256 snapshotTimestamp;
-        mapping(bytes32=>bool) withdrawn;
-        /** For migrations */
-        MassMigration[] migrations;
-    }
+struct MassDeposit {
+    bytes32 merged;
+    uint256 amount;
+    uint256 fee;
+    uint256 length;
+    bool committed;
+}
 
+struct Withdrawable {
+    bytes32 root;
+    uint index;
+}
 
-    struct MassDeposit {
-        bytes32 merged;
-        uint256 amount;
-        uint256 fee;
-        uint256 length;
-        bool committed;
-    }
+/**
+struct Deposit {
+    uint256 amount;
+    uint256 salt;
+    uint[2] pubKey;
+}
+*/
 
-    struct Withdrawable {
-        bytes32 root;
-        uint index;
-    }
+struct Transfer {
+    uint8 numberOfInputs;
+    uint8 numberOfOutputs;
+    uint256 fee;
+    uint256[] inclusionRefs;
+    bytes32[] nullifiers;
+    uint256[] outputs;
+    uint256[8] proof;
+}
 
-    /**
-    struct Deposit {
-        uint256 amount;
-        uint256 salt;
-        uint[2] pubKey;
-    }
-    */
+struct Withdrawal {
+    uint256 amount;
+    uint256 fee;
+    address to;
+    uint8 numberOfInputs;
+    uint256[] inclusionRefs;
+    bytes32[] nullifiers;
+    uint256[8] proof;
+}
 
-    struct Transfer {
-        uint8 numberOfInputs;
-        uint8 numberOfOutputs;
-        uint256 fee;
-        uint256[] inclusionRefs;
-        bytes32[] nullifiers;
-        uint256[] outputs;
-        uint256[8] proof;
-    }
+struct Migration {
+    uint256 leaf; /// amount, salt, pubkey[2]
+    address destination;
+    uint256 amount;
+    uint256 fee;
+    uint256 migrationFee; /// migration executor will take this
+    uint8 numberOfInputs;
+    uint256[] inclusionRefs;
+    bytes32[] nullifiers;
+    uint256[8] proof;
+}
 
-    struct Withdrawal {
-        uint256 amount;
-        uint256 fee;
-        address to;
-        uint8 numberOfInputs;
-        uint256[] inclusionRefs;
-        bytes32[] nullifiers;
-        uint256[8] proof;
-    }
+struct MassMigration {
+    address destination;
+    uint256 amount;
+    uint256 migrationFee;
+    bytes32 mergedLeaves;
+    uint256 length;
+}
 
-    struct Migration {
-        uint256 leaf; /// amount, salt, pubkey[2]
-        address destination;
-        uint256 amount;
-        uint256 fee;
-        uint256 migrationFee; /// migration executor will take this
-        uint8 numberOfInputs;
-        uint256[] inclusionRefs;
-        bytes32[] nullifiers;
-        uint256[8] proof;
-    }
+struct Header {
+    bytes32 parentBlock;
+    /** UTXO roll up  */
+    uint256 prevUTXORoot;
+    uint256 prevUTXOIndex;
+    uint256 nextUTXORoot;
+    uint256 nextUTXOIndex;
 
-    struct MassMigration {
-        address destination;
-        uint256 amount;
-        uint256 migrationFee;
-        bytes32 mergedLeaves;
-        uint256 length;
-    }
+    /** Nullifier roll up  */
+    bytes32 prevNullifierRoot;
+    bytes32 nextNullifierRoot;
 
-    struct Header {
-        bytes32 parentBlock;
-        /** UTXO roll up  */
-        uint256 prevUTXORoot;
-        uint256 prevUTXOIndex;
-        uint256 nextUTXORoot;
-        uint256 nextUTXOIndex;
+    /** Withdrawal roll up  */
+    bytes32 prevWithdrawalRoot;
+    uint256 prevWithdrawalIndex;
+    bytes32 nextWithdrawalRoot;
+    uint256 nextWithdrawalIndex;
 
-        /** Nullifier roll up  */
-        bytes32 prevNullifierRoot;
-        bytes32 nextNullifierRoot;
+    /** Transactions */
+    bytes32 depositRoot;
+    bytes32 transferRoot;
+    bytes32 withdrawalRoot;
+    bytes32 migrationRoot;
 
-        /** Withdrawal roll up  */
-        bytes32 prevWithdrawalRoot;
-        uint256 prevWithdrawalIndex;
-        bytes32 nextWithdrawalRoot;
-        uint256 nextWithdrawalIndex;
+    /** Etc */
+    uint256 fee;
+    bytes32 metadata;
+    address proposer;
+}
 
-        /** Transactions */
-        bytes32 depositRoot;
-        bytes32 transferRoot;
-        bytes32 withdrawalRoot;
-        bytes32 migrationRoot;
+struct Body {
+    uint[] depositIds;
+    Transfer[] transfers;
+    Withdrawal[] withdrawals;
+    Migration[] migrations;
+}
 
-        /** Etc */
-        uint256 fee;
-        bytes32 metadata;
-        address proposer;
-    }
+struct Block {
+    bytes32 id;
+    Header header;
+    Body body;
+}
 
-    struct Body {
-        uint[] depositIds;
-        Transfer[] transfers;
-        Withdrawal[] withdrawals;
-        Migration[] migrations;
-    }
+struct Finalization {
+    bytes32 blockId;
+    Header header;
+    uint[] depositIds;
+    MassMigration[] migrations;
+}
 
-    struct Block {
-        bytes32 id;
-        Header header;
-        Body body;
-    }
+struct Proposer {
+    uint stake;
+    uint reward;
+    uint exitAllowance;
+}
 
-    struct Finalization {
-        bytes32 blockId;
-        Header header;
-        uint[] depositIds;
-        MassMigration[] migrations;
-    }
+struct Proposal {
+    bytes32 headerHash;
+    uint challengeDue;
+    bool slashed;
+}
 
-    struct Proposer {
-        uint stake;
-        uint reward;
-        uint exitAllowance;
-    }
+struct ChallengeResult {
+    bool slash;
+    bytes32 proposalId;
+    address proposer;
+    string message;
+}
 
-    struct Proposal {
-        bytes32 headerHash;
-        uint challengeDue;
-        bool slashed;
-    }
-
-    struct ChallengeResult {
-        bool slash;
-        bytes32 proposalId;
-        address proposer;
-        string message;
-    }
-
+library Types {
     function init(Blockchain storage chain, bytes32 genesis) internal {
         chain.latest = genesis;
         chain.withdrawables.push(); /// withdrawables[0]: daily snapshot
