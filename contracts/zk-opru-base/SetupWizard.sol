@@ -7,7 +7,7 @@ import { TxType, Types } from "../libraries/Types.sol";
 import { Pairing } from "../libraries/Pairing.sol";
 
 
-contract Layer2SetupWizard is Layer2Controller {
+contract SetupWizard is Layer2Controller {
     address setupWizard;
 
     constructor(address _setupWizard) public {
@@ -22,46 +22,6 @@ contract Layer2SetupWizard is Layer2Controller {
 
     function registerERC20(address _erc20) public onlySetupWizard {
         Layer2.asset.erc20 = _erc20;
-    }
-
-    function registerUIContract(
-        address addr,
-        bytes4[] memory sigs
-    ) public onlySetupWizard {
-        Layer2Controller.ui = addr;
-        for (uint i = 0; i < sigs.length; i++) {
-            Layer2Controller.proxied[sigs[i]] = addr;
-        }
-    }
-
-    function registerRollUpContract(
-        address addr,
-        bytes4[] memory sigs
-    ) public onlySetupWizard {
-        Layer2Controller.rollUp = addr;
-        for (uint i = 0; i < sigs.length; i++) {
-            Layer2Controller.proxied[sigs[i]] = addr;
-        }
-    }
-
-    function registerChallengeContract(
-        address addr,
-        bytes4[] memory sigs
-    ) public onlySetupWizard {
-        Layer2Controller.challenge = addr;
-        for (uint i = 0; i < sigs.length; i++) {
-            Layer2Controller.proxied[sigs[i]] = addr;
-        }
-    }
-
-    function registerMigrateContract(
-        address addr,
-        bytes4[] memory sigs
-    ) public onlySetupWizard {
-        Layer2Controller.migrate = addr;
-        for (uint i = 0; i < sigs.length; i++) {
-            Layer2Controller.proxied[sigs[i]] = addr;
-        }
     }
 
     function registerVk(
@@ -85,7 +45,23 @@ contract Layer2SetupWizard is Layer2Controller {
         }
     }
 
-    function allowMigrants(address[] memory migrants) public onlySetupWizard{
+    function connectUserInteractable(address addr) public onlySetupWizard {
+        Layer2Controller._connectUserInteractable(addr);
+    }
+
+    function connectRollUpable(address addr) public onlySetupWizard {
+        Layer2Controller._connectRollUpable(addr);
+    }
+
+    function connectChallengeable(address addr) public onlySetupWizard {
+        Layer2Controller._connectChallengeable(addr);
+    }
+
+    function connectMigratable(address addr) public onlySetupWizard {
+        Layer2Controller._connectMigratable(addr);
+    }
+
+    function allowMigrants(address[] memory migrants) public onlySetupWizard {
         for (uint i = 0; i < migrants.length; i++) {
             Layer2.allowedMigrants[migrants[i]] = true;
         }

@@ -38,20 +38,13 @@ module.exports = function(deployer, _, accounts) {
       return ISetupWizard.at(coordinate.address);
     })
     .then(async function(wizard) {
-      // Setup proxy
-      let registration = {
-        challenge: wizard.registerChallengeContract,
-        ui: wizard.registerUIContract,
-        rollup: wizard.registerRollUpContract,
-        migrate: wizard.registerMigrateContract
-      };
-      Object.keys(registration).forEach(async key => {
-        let instance = instances[key];
-        let sigs = instance.abi.filter(func => func.stateMutability !== 'view').map(func => func.signature);
-        await registration[key](instance.address, sigs);
-      });
-      // Setup erc20
+      // Connect ERC20 asset
       await wizard.registerERC20(instances.erc20.address);
+      // Setup proxy
+      await wizard.connectUserInteractable(instances.ui.address);
+      await wizard.connectRollUpable(instances.rollup.address);
+      await wizard.connectChallengeable(instances.challenge.address);
+      await wizard.connectMigratable(instances.migrate.address);
       // Setup zkSNARKs
       // await wizard.registerVk(...)
       // Setup migrations

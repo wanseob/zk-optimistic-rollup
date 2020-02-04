@@ -39,14 +39,14 @@ contract Challengeable is Layer2 {
 
     function challengeNullifierRollUp(
         uint nullifierRollUpId,
-        bytes32[256][] calldata siblings,
+        uint numOfNullifiers,
         bytes calldata
     ) external {
         Block memory submission = Types.blockFromCalldataAt(2);
         Challenge memory result = _challengeResultOfNullifierRollUp(
             submission,
             nullifierRollUpId,
-            siblings
+            numOfNullifiers
         );
         _execute(result);
     }
@@ -101,7 +101,7 @@ contract Challengeable is Layer2 {
     }
 
     function challengeTransaction(TxType txType, uint index, bytes calldata) external {
-        Block memory submission = Types.blockFromCalldataAt(1);
+        Block memory submission = Types.blockFromCalldataAt(2);
         function (Block memory, uint) internal view returns(Challenge memory) validate;
         if (txType == TxType.Transfer) {
             validate = _challengeResultOfTransfer;
@@ -115,12 +115,20 @@ contract Challengeable is Layer2 {
     }
 
     function challengeUsedNullifier(
-        bytes32 nullifier,
+        TxType txType,
+        uint txIndex,
+        uint nullifierIndex,
         bytes32[256] calldata sibling,
         bytes calldata
     ) external {
-        Block memory submission = Types.blockFromCalldataAt(2);
-        Challenge memory result = _challengeResultOfUsedNullifier(submission, nullifier, sibling);
+        Block memory submission = Types.blockFromCalldataAt(4);
+        Challenge memory result = _challengeResultOfUsedNullifier(
+            submission,
+            txType,
+            txIndex,
+            nullifierIndex,
+            sibling
+        );
         _execute(result);
     }
 
@@ -130,16 +138,6 @@ contract Challengeable is Layer2 {
         _execute(result);
     }
 
-    /**
-     * @notice Check the validity of an inclusion refernce for a nullifier.
-     * @dev Each nullifier should be paired with an inclusion reference which is
-     *      a root of utxo tree. You can use finalized roots for the reference or
-     *      recent block's utxo roots. For the latter, recent REF_DEPTH of utxo
-     *      roots are available and it costs. It costs maximum 1800*REF_DEPTH gas
-     *      to validating an inclusion reference during a TX challenge process.
-     * @param l2BlockHash block's hash where to start searching from.
-     * @param ref Utxo root which includes the nullifier's origin.
-     */
     function isValidRef(bytes32 l2BlockHash, uint256 ref) public view returns (bool) {
         if (Layer2.chain.finalizedUTXOs[ref]) {
             return true;
@@ -281,14 +279,14 @@ contract Challengeable is Layer2 {
     function _challengeResultOfNullifierRollUp(
         Block memory submission,
         uint nullifierRollUpId,
-        bytes32[256][] memory siblings
+        uint numOfNullifiers
     )
         internal
         view
         returns (Challenge memory)
     {
         /// Assign a new array
-        bytes32[] memory nullifiers = new bytes32[](siblings.length);
+        bytes32[] memory nullifiers = new bytes32[](numOfNullifiers);
         /// Get outputs to append
         uint index = 0;
         for (uint i = 0; i < submission.body.transfers.length; i++) {
@@ -303,15 +301,15 @@ contract Challengeable is Layer2 {
                 nullifiers[index++] = withdrawal.nullifiers[j];
             }
         }
-
-        if (index != siblings.length) {
-            return Challenge(
-                false,
-                submission.id,
-                submission.header.proposer,
-                "Submitted invalid number of siblings"
-            );
+        for (uint i = 0; i < submission.body.migrations.length; i++) {
+            Migration memory migration = submission.body.migrations[i];
+            for (uint j = 0; j < migration.nullifiers.length; j++) {
+                nullifiers[index++] = migration.nullifiers[j];
+            }
         }
+
+        require(index == numOfNullifiers, "Submitted invalid length for the array nullifiers");
+
         /// Get rolled up root
         SMT256.OPRU memory proof = Layer2.proof.ofNullifier[nullifierRollUpId];
         bool isValidRollUp = proof.verify(
@@ -725,16 +723,26 @@ contract Challengeable is Layer2 {
 
     function _challengeResultOfUsedNullifier(
         Block memory submission,
-        bytes32 nullifier,
+        TxType txType,
+        uint txIndex,
+        uint nullifierIndex,
         bytes32[256] memory sibling
     )
         internal
         pure
         returns (Challenge memory)
     {
+        bytes32 usedNullifier;
+        if (txType == TxType.Transfer) {
+            usedNullifier = submission.body.transfers[txIndex].nullifiers[nullifierIndex];
+        } else if (txType == TxType.Withdrawal) {
+            usedNullifier = submission.body.withdrawals[txIndex].nullifiers[nullifierIndex];
+        } else if (txType == TxType.Migration) {
+            usedNullifier = submission.body.migrations[txIndex].nullifiers[nullifierIndex];
+        }
         bytes32[] memory nullifiers = new bytes32[](1);
         bytes32[256][] memory siblings = new bytes32[256][](1);
-        nullifiers[0] = nullifier;
+        nullifiers[0] = usedNullifier;
         siblings[0] = sibling;
         bytes32 updatedRoot = SMT256.rollUp(
             submission.header.prevNullifierRoot,

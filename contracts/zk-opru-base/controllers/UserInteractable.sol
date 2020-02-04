@@ -48,22 +48,20 @@ contract UserInteractable is Layer2 {
 
     function withdraw(
         uint amount,
-        address to,
         bytes32 proofHash,
-        uint refId,
-        uint index,
+        uint rootIndex,
+        uint leafIndex,
         uint[] memory siblings
     ) public {
-        require(to == msg.sender, "Not authorized");
-        _withdraw(amount, to, proofHash, refId, index, siblings);
+        _withdraw(amount, msg.sender, proofHash, rootIndex, leafIndex, siblings);
     }
 
-    function withdraw(
+    function withdrawUsingSignature(
         uint amount,
         address to,
         bytes32 proofHash,
-        uint refId,
-        uint index,
+        uint rootIndex,
+        uint leafIndex,
         uint[] memory siblings,
         uint8 v,
         bytes32 r,
@@ -71,28 +69,29 @@ contract UserInteractable is Layer2 {
     ) public {
         bytes32 leaf = keccak256(abi.encodePacked(amount, to, proofHash));
         bytes32 prefixedHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", leaf));
-        require(to == ecrecover(prefixedHash, v, r, s), "Invalid signature");
-        _withdraw(amount, to, proofHash, refId, index, siblings);
+        address signer = ecrecover(prefixedHash, v, r, s);
+        require(signer == to, "Invalid signature");
+        _withdraw(amount, to, proofHash, rootIndex, leafIndex, siblings);
     }
 
     function _withdraw(
         uint amount,
         address to,
         bytes32 proofHash,
-        uint refId,
-        uint index,
+        uint rootIndex,
+        uint leafIndex,
         uint[] memory siblings
     ) internal {
         bytes32 leaf = keccak256(abi.encodePacked(amount, to, proofHash));
-        /// Check withdrawable
+        /// Check whether it is already withdrawn or not
         require(!chain.withdrawn[leaf], "Already withdrawn");
-        /// Get inclusion ref
-        Withdrawable memory withdrawable = chain.withdrawables[refId];
-        /// Inclusion proof
+        /// Get the root of a withdrawable tree to use for the inclusion proof
+        Withdrawable memory withdrawable = chain.withdrawables[rootIndex];
+        /// Calculate the inclusion proof
         bool inclusion = Hash.keccak().merkleProof(
             uint(withdrawable.root),
             uint(leaf),
-            index,
+            leafIndex,
             siblings
         );
         require(inclusion, "The given withdrawal leaf does not exist");

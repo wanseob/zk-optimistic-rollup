@@ -61,6 +61,11 @@ contract Coordinatable is Layer2 {
         Layer2.chain.utxoRootOf[currentBlockHash] = submittedBlock.header.nextUTXORoot;
         /// Update exit allowance period
         proposer.exitAllowance = block.number + CHALLENGE_PERIOD;
+        /// Freeze the latest mass deposit for the next block proposer
+        MassDeposit storage latest = Layer2.chain.depositQueue[Layer2.chain.depositQueue.length - 1];
+        if(!latest.committed) {
+            latest.committed = true;
+        }
     }
 
     function finalize(bytes memory) public {
@@ -94,14 +99,15 @@ contract Coordinatable is Layer2 {
         target.root = finalization.header.nextWithdrawalRoot;
         target.index = finalization.header.nextWithdrawalIndex;
 
-        /// Update the daily snapshot of withdrawable tree
+        /// Update the daily snapshot of withdrawable tree to prevent race conditions
         if (Layer2.chain.snapshotTimestamp + 1 days < now) {
             Layer2.chain.snapshotTimestamp = now;
             Layer2.chain.withdrawables[0].root = target.root;
             Layer2.chain.withdrawables[0].index = target.index;
         }
 
-        /// Record mass migrations and collect fees
+        /// Record mass migrations and collect fees.
+        /// A MassMigration becomes a MassDeposit for the migration destination.
         for (uint i = 0; i < finalization.migrations.length; i++) {
             Layer2.chain.migrations.push() = finalization.migrations[i];
         }
