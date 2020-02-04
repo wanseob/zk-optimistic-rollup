@@ -1,10 +1,10 @@
 pragma solidity >= 0.6.0;
 
-import { Layer2 } from "./Layer2.sol";
-import { Asset, AssetHandler } from "../libraries/Asset.sol";
-import { Hash } from "../libraries/Hash.sol";
-import { RollUpLib } from "../../node_modules/merkle-tree-rollup/contracts/library/RollUpLib.sol";
-import { MassDeposit, Withdrawable, Types } from "../libraries/Types.sol";
+import { Layer2 } from "./../Layer2.sol";
+import { Asset, AssetHandler } from "../../libraries/Asset.sol";
+import { Hash } from "../../libraries/Hash.sol";
+import { RollUpLib } from "../../../node_modules/merkle-tree-rollup/contracts/library/RollUpLib.sol";
+import { MassDeposit, Withdrawable, Types } from "../../libraries/Types.sol";
 
 
 contract UserInteractable is Layer2 {
@@ -13,7 +13,12 @@ contract UserInteractable is Layer2 {
 
     event Deposit(uint indexed queuedAt, uint note);
 
-    function deposit(uint note, uint amount, uint[2] memory pubKey, uint fee) public payable {
+    function deposit(
+        uint note,
+        uint amount,
+        uint fee,
+        uint[2] memory pubKey
+    ) public payable {
         ///TODO: limit the length of a queue: 1024
         require(note != 0, "Note hash can not be zero");
         ///TODO: require(fee >= specified fee);

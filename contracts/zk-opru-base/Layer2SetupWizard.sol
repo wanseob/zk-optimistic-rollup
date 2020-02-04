@@ -1,19 +1,16 @@
 pragma solidity >= 0.6.0;
 
 import { Layer2 } from "./Layer2.sol";
+import { Layer2Controller } from "./Layer2Controller.sol";
 import { SNARKsVerifier } from "../libraries/SNARKs.sol";
 import { TxType, Types } from "../libraries/Types.sol";
 import { Pairing } from "../libraries/Pairing.sol";
 
 
-contract SetupWizard is Layer2 {
+contract Layer2SetupWizard is Layer2Controller {
     address setupWizard;
 
-    constructor(
-        address _erc20,
-        address _setupWizard
-    ) public {
-        Layer2.asset.erc20 = _erc20;
+    constructor(address _setupWizard) public {
         Layer2.asset.wallet = address(this);
         setupWizard = _setupWizard;
     }
@@ -21,6 +18,50 @@ contract SetupWizard is Layer2 {
     modifier onlySetupWizard {
         require(msg.sender == setupWizard, "Not authorized");
         _;
+    }
+
+    function registerERC20(address _erc20) public onlySetupWizard {
+        Layer2.asset.erc20 = _erc20;
+    }
+
+    function registerUIContract(
+        address addr,
+        bytes4[] memory sigs
+    ) public onlySetupWizard {
+        Layer2Controller.ui = addr;
+        for (uint i = 0; i < sigs.length; i++) {
+            Layer2Controller.proxied[sigs[i]] = addr;
+        }
+    }
+
+    function registerRollUpContract(
+        address addr,
+        bytes4[] memory sigs
+    ) public onlySetupWizard {
+        Layer2Controller.rollUp = addr;
+        for (uint i = 0; i < sigs.length; i++) {
+            Layer2Controller.proxied[sigs[i]] = addr;
+        }
+    }
+
+    function registerChallengeContract(
+        address addr,
+        bytes4[] memory sigs
+    ) public onlySetupWizard {
+        Layer2Controller.challenge = addr;
+        for (uint i = 0; i < sigs.length; i++) {
+            Layer2Controller.proxied[sigs[i]] = addr;
+        }
+    }
+
+    function registerMigrateContract(
+        address addr,
+        bytes4[] memory sigs
+    ) public onlySetupWizard {
+        Layer2Controller.migrate = addr;
+        for (uint i = 0; i < sigs.length; i++) {
+            Layer2Controller.proxied[sigs[i]] = addr;
+        }
     }
 
     function registerVk(

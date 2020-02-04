@@ -143,7 +143,7 @@ struct Proposal {
     bool slashed;
 }
 
-struct ChallengeResult {
+struct Challenge {
     bool slash;
     bytes32 proposalId;
     address proposer;
@@ -648,7 +648,7 @@ library Types {
         TxType txType,
         uint8 numberOfInputs,
         uint8 numberOfOutputs
-    ) public pure returns (bytes32) {
+    ) internal pure returns (bytes32) {
         return keccak256(abi.encodePacked(txType, numberOfInputs, numberOfOutputs));
     }
 }

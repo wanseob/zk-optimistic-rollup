@@ -77,14 +77,20 @@ module.exports = {
 
   // Set default mocha options here, use special reporters etc.
   mocha: {
+    reporter: 'eth-gas-reporter',
+    useColors: true
     // timeout: 100000
   },
 
   // Configure your compilers
   compilers: {
     solc: {
-      version: '0.6.0',
-      evmVersion: 'istanbul'
+      version: '0.6.1',
+      evmVersion: 'istanbul',
+      settings: {
+        optimize: true,
+        runs: 1000000
+      }
       // version: "0.5.1",    // Fetch exact version from solc-bin (default: truffle's version)
       // docker: true,        // Use "0.5.1" you've installed locally with docker (default: false)
       // settings: {          // See the solidity docs for advice about optimization and evmVersion
@@ -94,6 +100,14 @@ module.exports = {
       //  },
       //  evmVersion: "byzantium"
       // }
+    },
+    external: {
+      command: 'node utils/mimcGenerator.js && node utils/erc20Generator.js',
+      targets: [
+        {
+          path: 'build/generated/*.json'
+        }
+      ]
     }
   }
 };

@@ -5,7 +5,15 @@ import { Pairing } from "../libraries/Pairing.sol";
 import { SNARKsVerifier } from "../libraries/SNARKs.sol";
 import { Asset } from "../libraries/Asset.sol";
 import { Configurated } from "./Configurated.sol";
+import { OPRU, ExtendedOPRU } from "../../node_modules/merkle-tree-rollup/contracts/library/Types.sol";
+import { SMT256 } from "../../node_modules/smt-rollup/contracts/SMT.sol";
 
+struct RollUpProofs {
+    ExtendedOPRU[] ofUTXO;
+    SMT256.OPRU[] ofNullifier;
+    OPRU[] ofWithdrawal;
+    mapping(uint8=>mapping(uint=>address)) permittedTo;
+}
 
 contract Layer2 is Configurated {
     /** Asset contract should be assigned by the setup wizard */
@@ -19,4 +27,7 @@ contract Layer2 is Configurated {
 
     /** Addresses allowed to migrate from. Setup wizard manages the list */
     mapping(address=>bool) allowedMigrants;
+
+    /** Roll up proofs */
+    RollUpProofs proof;
 }

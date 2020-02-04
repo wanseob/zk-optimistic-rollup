@@ -1,15 +1,15 @@
 pragma solidity >= 0.6.0;
 
-import { Hasher , OPRU, ExtendedOPRU } from "../../node_modules/merkle-tree-rollup/contracts/library/Types.sol";
-import { SMT256 } from "../../node_modules/smt-rollup/contracts/SMT.sol";
-import { Layer2 } from "./Layer2.sol";
-import { RollUp } from "./RollUp.sol";
-import { SNARKsVerifier } from "../libraries/SNARKs.sol";
-import { Hash } from "../libraries/Hash.sol";
+import { Hasher , OPRU, ExtendedOPRU } from "../../../node_modules/merkle-tree-rollup/contracts/library/Types.sol";
+import { OPRULib } from "../../../node_modules/merkle-tree-rollup/contracts/library/OPRULib.sol";
+import { SMT256 } from "../../../node_modules/smt-rollup/contracts/SMT.sol";
+import { Layer2 } from "./../Layer2.sol";
+import { SNARKsVerifier } from "../../libraries/SNARKs.sol";
+import { Hash } from "../../libraries/Hash.sol";
 import {
     TxType,
     Proposal,
-    ChallengeResult,
+    Challenge,
     Block,
     MassDeposit,
     MassMigration,
@@ -19,27 +19,13 @@ import {
     Proposer,
     Proposal,
     Types
-} from "../libraries/Types.sol";
+} from "../../libraries/Types.sol";
 
-
-contract Challengeable is RollUp, Layer2 {
+contract Challengeable is Layer2 {
+    using OPRULib for *;
     using Types for *;
+    using SMT256 for SMT256.OPRU;
     using SNARKsVerifier for SNARKsVerifier.VerifyingKey;
-
-    /**
-     * Challenge functions
-     * - challengeUTXORollUp
-     * - challengeNullifierRollUp
-     * - challengeDepositRoot
-     * - challengeTransferRoot
-     * - challengeWithdrawalRoot
-     * - challengeTotalFee
-     * - challengeInclusion
-     * - challengeTransfer
-     * - challengeWithdrawal
-     * - challengeUsedNullifier
-     * - challengeDuplicatedNullifier
-     */
 
     function challengeUTXORollUp(
         uint utxoRollUpId,
@@ -47,7 +33,7 @@ contract Challengeable is RollUp, Layer2 {
         bytes calldata
     ) external {
         Block memory submission = Types.blockFromCalldataAt(2);
-        ChallengeResult memory result = _challengeResultOfUTXORollUp(submission, utxoRollUpId, deposits);
+        Challenge memory result = _challengeResultOfUTXORollUp(submission, utxoRollUpId, deposits);
         _execute(result);
     }
 
@@ -57,7 +43,7 @@ contract Challengeable is RollUp, Layer2 {
         bytes calldata
     ) external {
         Block memory submission = Types.blockFromCalldataAt(2);
-        ChallengeResult memory result = _challengeResultOfNullifierRollUp(
+        Challenge memory result = _challengeResultOfNullifierRollUp(
             submission,
             nullifierRollUpId,
             siblings
@@ -70,53 +56,61 @@ contract Challengeable is RollUp, Layer2 {
         bytes calldata
     ) external {
         Block memory submission = Types.blockFromCalldataAt(1);
-        ChallengeResult memory result = _challengeResultOfDepositRoot(submission, deposits);
+        Challenge memory result = _challengeResultOfDepositRoot(submission, deposits);
         _execute(result);
     }
 
     function challengeTransferRoot(bytes calldata) external {
         Block memory submission = Types.blockFromCalldataAt(0);
-        ChallengeResult memory result = _challengeResultOfTransferRoot(submission);
+        Challenge memory result = _challengeResultOfTransferRoot(submission);
         _execute(result);
     }
 
     function challengeWithdrawalRoot(bytes calldata) external {
         Block memory submission = Types.blockFromCalldataAt(0);
-        ChallengeResult memory result = _challengeResultOfWithdrawalRoot(submission);
+        Challenge memory result = _challengeResultOfWithdrawalRoot(submission);
+        _execute(result);
+    }
+
+    function challengeMigrationRoot(bytes calldata) external {
+        Block memory submission = Types.blockFromCalldataAt(0);
+        Challenge memory result = _challengeResultOfMigrationRoot(submission);
         _execute(result);
     }
 
     function challengeTotalFee(bytes calldata) external {
         Block memory submission = Types.blockFromCalldataAt(0);
-        ChallengeResult memory result = _challengeResultOfTotalFee(submission);
+        Challenge memory result = _challengeResultOfTotalFee(submission);
         _execute(result);
     }
 
     function challengeInclusion(
-        bool isTransfer,
+        TxType txType,
         uint txIndex,
         uint refIndex,
         bytes calldata
     ) external {
         Block memory submission = Types.blockFromCalldataAt(3);
-        ChallengeResult memory result = _challengeResultOfInclusion(
+        Challenge memory result = _challengeResultOfInclusion(
             submission,
-            isTransfer,
+            txType,
             txIndex,
             refIndex
         );
         _execute(result);
     }
 
-    function challengeTransfer(uint txIndex, bytes calldata) external {
+    function challengeTransaction(TxType txType, uint index, bytes calldata) external {
         Block memory submission = Types.blockFromCalldataAt(1);
-        ChallengeResult memory result = _challengeResultOfTransfer(submission, txIndex);
-        _execute(result);
-    }
-
-    function challengeWithdrawal(uint withdrawalIndex, bytes calldata) external {
-        Block memory submission = Types.blockFromCalldataAt(1);
-        ChallengeResult memory result = _challengeResultOfWithdrawal(submission, withdrawalIndex);
+        function (Block memory, uint) internal view returns(Challenge memory) validate;
+        if (txType == TxType.Transfer) {
+            validate = _challengeResultOfTransfer;
+        } else if (txType == TxType.Withdrawal) {
+            validate = _challengeResultOfWithdrawal;
+        } else if (txType == TxType.Migration) {
+            validate = _challengeResultOfMigration;
+        }
+        Challenge memory result = validate(submission, index);
         _execute(result);
     }
 
@@ -126,241 +120,14 @@ contract Challengeable is RollUp, Layer2 {
         bytes calldata
     ) external {
         Block memory submission = Types.blockFromCalldataAt(2);
-        ChallengeResult memory result = _challengeResultOfUsedNullifier(submission, nullifier, sibling);
+        Challenge memory result = _challengeResultOfUsedNullifier(submission, nullifier, sibling);
         _execute(result);
     }
 
     function challengeDuplicatedNullifier(bytes32 nullifier, bytes calldata) external {
         Block memory submission = Types.blockFromCalldataAt(1);
-        ChallengeResult memory result = _challengeResultOfDuplicatedNullifier(submission, nullifier);
+        Challenge memory result = _challengeResultOfDuplicatedNullifier(submission, nullifier);
         _execute(result);
-    }
-
-    function dryChallengeUTXORollUp(
-        uint utxoRollUpId,
-        uint[] calldata deposits,
-        bytes calldata
-    )
-        external
-        view
-        returns (
-            bool slash,
-            bytes32 proposalId,
-            address proposer,
-            string memory message
-        )
-    {
-        Block memory submission = Types.blockFromCalldataAt(2);
-        ChallengeResult memory result = _challengeResultOfUTXORollUp(submission, utxoRollUpId, deposits);
-        return (result.slash, result.proposalId, result.proposer, result.message);
-    }
-
-    function dryChallengeNullifierRollUp(
-        uint nullifierRollUpId,
-        bytes32[256][] calldata siblings,
-        bytes calldata
-    )
-        external
-        view
-        returns (
-            bool slash,
-            bytes32 proposalId,
-            address proposer,
-            string memory message
-        )
-    {
-        Block memory submission = Types.blockFromCalldataAt(2);
-        ChallengeResult memory result = _challengeResultOfNullifierRollUp(
-            submission,
-            nullifierRollUpId,
-            siblings
-        );
-        return (result.slash, result.proposalId, result.proposer, result.message);
-    }
-
-    function dryChallengeDepositRoot(uint[] calldata deposits, bytes calldata)
-        external
-        view
-        returns (
-            bool slash,
-            bytes32 proposalId,
-            address proposer,
-            string memory message
-        )
-    {
-        Block memory submission = Types.blockFromCalldataAt(1);
-        ChallengeResult memory result = _challengeResultOfDepositRoot(submission, deposits);
-        return (result.slash, result.proposalId, result.proposer, result.message);
-    }
-
-    function dryChallengeTransferRoot(bytes calldata)
-        external
-        pure
-        returns (
-            bool slash,
-            bytes32 proposalId,
-            address proposer,
-            string memory message
-        )
-    {
-        Block memory submission = Types.blockFromCalldataAt(0);
-        ChallengeResult memory result = _challengeResultOfTransferRoot(submission);
-        return (result.slash, result.proposalId, result.proposer, result.message);
-    }
-
-    function dryChallengeWithdrawalRoot(bytes calldata)
-        external
-        pure
-        returns (
-            bool slash,
-            bytes32 proposalId,
-            address proposer,
-            string memory message
-        )
-    {
-        Block memory submission = Types.blockFromCalldataAt(0);
-        ChallengeResult memory result = _challengeResultOfWithdrawalRoot(submission);
-        return (result.slash, result.proposalId, result.proposer, result.message);
-    }
-
-    function dryChallengeMigrationRoot(bytes calldata)
-        external
-        pure
-        returns (
-            bool slash,
-            bytes32 proposalId,
-            address proposer,
-            string memory message
-        )
-    {
-        Block memory submission = Types.blockFromCalldataAt(0);
-        ChallengeResult memory result = _challengeResultOfMigrationRoot(submission);
-        return (result.slash, result.proposalId, result.proposer, result.message);
-    }
-
-    function dryChallengeTotalFee(bytes calldata)
-        external
-        pure
-        returns (
-            bool slash,
-            bytes32 proposalId,
-            address proposer,
-            string memory message
-        )
-    {
-        Block memory submission = Types.blockFromCalldataAt(0);
-        ChallengeResult memory result = _challengeResultOfTotalFee(submission);
-        return (result.slash, result.proposalId, result.proposer, result.message);
-    }
-
-    function dryChallengeInclusion(
-        bool isTransfer,
-        uint txIndex,
-        uint refIndex,
-        bytes calldata
-    )
-        external
-        view
-        returns (
-            bool slash,
-            bytes32 proposalId,
-            address proposer,
-            string memory message
-        )
-    {
-        Block memory submission = Types.blockFromCalldataAt(3);
-        ChallengeResult memory result = _challengeResultOfInclusion(
-            submission,
-            isTransfer,
-            txIndex,
-            refIndex
-        );
-        return (result.slash, result.proposalId, result.proposer, result.message);
-    }
-
-    function dryChallengeTransfer(uint txIndex, bytes calldata)
-        external
-        view
-        returns (
-            bool slash,
-            bytes32 proposalId,
-            address proposer,
-            string memory message
-        )
-    {
-        Block memory submission = Types.blockFromCalldataAt(1);
-        ChallengeResult memory result = _challengeResultOfTransfer(submission, txIndex);
-        return (result.slash, result.proposalId, result.proposer, result.message);
-    }
-
-    function dryChallengeWithdrawal(uint withdrawalIndex, bytes calldata)
-        external
-        view
-        returns (
-            bool slash,
-            bytes32 proposalId,
-            address proposer,
-            string memory message
-        )
-    {
-        Block memory submission = Types.blockFromCalldataAt(1);
-        ChallengeResult memory result = _challengeResultOfWithdrawal(submission, withdrawalIndex);
-        return (result.slash, result.proposalId, result.proposer, result.message);
-    }
-
-    function dryChallengeMigration(uint migrationIndex, bytes calldata)
-        external
-        view
-        returns (
-            bool slash,
-            bytes32 proposalId,
-            address proposer,
-            string memory message
-        )
-    {
-        Block memory submission = Types.blockFromCalldataAt(1);
-        ChallengeResult memory result = _challengeResultOfMigration(submission, migrationIndex);
-        return (result.slash, result.proposalId, result.proposer, result.message);
-    }
-
-    function dryChallengeUsedNullifier(
-        bytes32 nullifier,
-        bytes32[256] calldata sibling,
-        bytes calldata
-    )
-        external
-        pure
-        returns (
-            bool slash,
-            bytes32 proposalId,
-            address proposer,
-            string memory message
-        )
-    {
-        Block memory submission = Types.blockFromCalldataAt(2);
-        ChallengeResult memory result = _challengeResultOfUsedNullifier(submission, nullifier, sibling);
-        return (result.slash, result.proposalId, result.proposer, result.message);
-    }
-
-    function dryChallengeDuplicatedNullifier(bytes32 nullifier, bytes calldata)
-        external
-        pure
-        returns (
-            bool slash,
-            bytes32 proposalId,
-            address proposer,
-            string memory message
-        )
-    {
-        Block memory submission = Types.blockFromCalldataAt(1);
-        ChallengeResult memory result = _challengeResultOfDuplicatedNullifier(submission, nullifier);
-        return (result.slash, result.proposalId, result.proposer, result.message);
-    }
-
-    /// TODO temporal calculation
-    function estimateChallengeCost(bytes calldata) external pure returns (uint256 maxCost) {
-        Block memory submission = Types.blockFromCalldataAt(0);
-        return submission.maxChallengeCost();
     }
 
     /**
@@ -425,7 +192,7 @@ contract Challengeable is RollUp, Layer2 {
         delete Layer2.chain.proposers[proposerAddr];
     }
 
-    function _execute(ChallengeResult memory result) private {
+    function _execute(Challenge memory result) internal {
         require(result.slash, result.message);
 
         Proposal storage proposal = Layer2.chain.proposals[result.proposalId];
@@ -443,9 +210,9 @@ contract Challengeable is RollUp, Layer2 {
         uint utxoRollUpId,
         uint[] memory deposits
     )
-        private
+        internal
         view
-        returns (ChallengeResult memory)
+        returns (Challenge memory)
     {
         require(deposits.root() == submission.header.depositRoot, "Submitted invalid deposit data");
 
@@ -485,7 +252,7 @@ contract Challengeable is RollUp, Layer2 {
         }
         /// Submitted invalid next output index
         if (submission.header.nextUTXOIndex != (startingIndex + numOfItems)) {
-            return ChallengeResult(
+            return Challenge(
                 true,
                 submission.id,
                 submission.header.proposer,
@@ -494,7 +261,7 @@ contract Challengeable is RollUp, Layer2 {
         }
 
         /// Check validity of the roll up using the storage based MiMC roll up
-        ExtendedOPRU memory proof = RollUp.proof.ofUTXO[utxoRollUpId];
+        ExtendedOPRU memory proof = Layer2.proof.ofUTXO[utxoRollUpId];
         bool isValidRollUp = proof.opru.verify(
             uint(startingRoot),
             startingIndex,
@@ -502,7 +269,7 @@ contract Challengeable is RollUp, Layer2 {
             bytes32(0).mergeLeaves(outputs)
         );
 
-        return ChallengeResult(
+        return Challenge(
             !isValidRollUp,
             submission.id,
             submission.header.proposer,
@@ -516,9 +283,9 @@ contract Challengeable is RollUp, Layer2 {
         uint nullifierRollUpId,
         bytes32[256][] memory siblings
     )
-        private
+        internal
         view
-        returns (ChallengeResult memory)
+        returns (Challenge memory)
     {
         /// Assign a new array
         bytes32[] memory nullifiers = new bytes32[](siblings.length);
@@ -538,7 +305,7 @@ contract Challengeable is RollUp, Layer2 {
         }
 
         if (index != siblings.length) {
-            return ChallengeResult(
+            return Challenge(
                 false,
                 submission.id,
                 submission.header.proposer,
@@ -546,14 +313,14 @@ contract Challengeable is RollUp, Layer2 {
             );
         }
         /// Get rolled up root
-        SMT256.OPRU memory proof = RollUp.proof.ofNullifier[nullifierRollUpId];
+        SMT256.OPRU memory proof = Layer2.proof.ofNullifier[nullifierRollUpId];
         bool isValidRollUp = proof.verify(
             submission.header.prevNullifierRoot,
             submission.header.nextNullifierRoot,
             bytes32(0).mergeLeaves(nullifiers)
         );
 
-        return ChallengeResult(
+        return Challenge(
             !isValidRollUp,
             submission.id,
             submission.header.proposer,
@@ -562,9 +329,9 @@ contract Challengeable is RollUp, Layer2 {
     }
 
     function _challengeResultOfWithdrawalRollUp(Block memory submission, uint withdrawalRollUpId)
-        private
+        internal
         view
-        returns (ChallengeResult memory)
+        returns (Challenge memory)
     {
         /// Get total outputs
         uint numOfWithdrawals = submission.body.withdrawals.length;
@@ -594,7 +361,7 @@ contract Challengeable is RollUp, Layer2 {
         }
         /// Submitted invalid index of the next withdrawal tree
         if (submission.header.nextWithdrawalIndex != (startingIndex + numOfWithdrawals)) {
-            return ChallengeResult(
+            return Challenge(
                 true,
                 submission.id,
                 submission.header.proposer,
@@ -603,7 +370,7 @@ contract Challengeable is RollUp, Layer2 {
         }
 
         /// Check validity of the roll up using the storage based MiMC roll up
-        OPRU memory proof = RollUp.proof.ofWithdrawal[withdrawalRollUpId];
+        OPRU memory proof = Layer2.proof.ofWithdrawal[withdrawalRollUpId];
         bool isValidRollUp = proof.verify(
             uint(startingRoot),
             startingIndex,
@@ -611,7 +378,7 @@ contract Challengeable is RollUp, Layer2 {
             bytes32(0).mergeLeaves(withdrawalLeaves)
         );
 
-        return ChallengeResult(
+        return Challenge(
             !isValidRollUp,
             submission.id,
             submission.header.proposer,
@@ -623,9 +390,9 @@ contract Challengeable is RollUp, Layer2 {
         Block memory submission,
         uint[] memory deposits
     )
-        private
+        internal
         view
-        returns (ChallengeResult memory)
+        returns (Challenge memory)
     {
         uint index = 0;
         bytes32 merged;
@@ -633,7 +400,7 @@ contract Challengeable is RollUp, Layer2 {
             merged = bytes32(0);
             MassDeposit storage depositsToAdd = Layer2.chain.depositQueue[submission.body.depositIds[i]];
             if (!depositsToAdd.committed) {
-                return ChallengeResult(
+                return Challenge(
                     true,
                     submission.id,
                     submission.header.proposer,
@@ -647,7 +414,7 @@ contract Challengeable is RollUp, Layer2 {
             require(merged == depositsToAdd.merged, "Submitted invalid set of deposits");
         }
         require(index == deposits.length, "Submitted extra deposits");
-        return ChallengeResult(
+        return Challenge(
             submission.header.depositRoot != deposits.root(),
             submission.id,
             submission.header.proposer,
@@ -658,11 +425,11 @@ contract Challengeable is RollUp, Layer2 {
     function _challengeResultOfTransferRoot(
         Block memory submission
     )
-        private
+        internal
         pure
-        returns (ChallengeResult memory)
+        returns (Challenge memory)
     {
-        return ChallengeResult(
+        return Challenge(
             submission.header.transferRoot != submission.body.transfers.root(),
             submission.id,
             submission.header.proposer,
@@ -673,11 +440,11 @@ contract Challengeable is RollUp, Layer2 {
     function _challengeResultOfWithdrawalRoot(
         Block memory submission
     )
-        private
+        internal
         pure
-        returns (ChallengeResult memory)
+        returns (Challenge memory)
     {
-        return ChallengeResult(
+        return Challenge(
             submission.header.withdrawalRoot != submission.body.withdrawals.root(),
             submission.id,
             submission.header.proposer,
@@ -688,11 +455,11 @@ contract Challengeable is RollUp, Layer2 {
     function _challengeResultOfMigrationRoot(
         Block memory submission
     )
-        private
+        internal
         pure
-        returns (ChallengeResult memory)
+        returns (Challenge memory)
     {
-        return ChallengeResult(
+        return Challenge(
             submission.header.migrationRoot != submission.body.migrations.root(),
             submission.id,
             submission.header.proposer,
@@ -703,9 +470,9 @@ contract Challengeable is RollUp, Layer2 {
     function _challengeResultOfTotalFee(
         Block memory submission
     )
-        private
+        internal
         pure
-        returns (ChallengeResult memory)
+        returns (Challenge memory)
     {
         uint totalFee = 0;
         for (uint i = 0; i < submission.body.transfers.length; i ++) {
@@ -717,7 +484,7 @@ contract Challengeable is RollUp, Layer2 {
         for (uint i = 0; i < submission.body.migrations.length; i ++) {
             totalFee += submission.body.migrations[i].fee;
         }
-        return ChallengeResult(
+        return Challenge(
             totalFee != submission.header.fee,
             submission.id,
             submission.header.proposer,
@@ -727,24 +494,27 @@ contract Challengeable is RollUp, Layer2 {
 
     function _challengeResultOfInclusion(
         Block memory submission,
-        bool isTransfer,
+        TxType txType,
         uint txIndex,
         uint refIndex
     )
-        private
+        internal
         view
-        returns (ChallengeResult memory)
+        returns (Challenge memory)
     {
         uint ref;
-        if (isTransfer) {
+        if (txType == TxType.Transfer) {
             Transfer memory transfer = submission.body.transfers[txIndex];
             ref = transfer.inclusionRefs[refIndex];
-        } else {
+        } else if (txType == TxType.Withdrawal) {
             Withdrawal memory withdrawal = submission.body.withdrawals[txIndex];
             ref = withdrawal.inclusionRefs[refIndex];
+        } else if (txType == TxType.Migration) {
+            Migration memory migration = submission.body.migrations[txIndex];
+            ref = migration.inclusionRefs[refIndex];
         }
 
-        return ChallengeResult(
+        return Challenge(
             !isValidRef(submission.header.hash(), ref),
             submission.id,
             submission.header.proposer,
@@ -756,9 +526,9 @@ contract Challengeable is RollUp, Layer2 {
         Block memory submission,
         uint txIndex
     )
-        private
+        internal
         view
-        returns (ChallengeResult memory)
+        returns (Challenge memory)
     {
         Transfer memory transfer = submission.body.transfers[txIndex];
 
@@ -767,7 +537,7 @@ contract Challengeable is RollUp, Layer2 {
             transfer.numberOfInputs != transfer.inclusionRefs.length ||
             transfer.numberOfInputs != transfer.nullifiers.length
         ) {
-            return ChallengeResult(
+            return Challenge(
                 true,
                 submission.id,
                 submission.header.proposer,
@@ -781,7 +551,7 @@ contract Challengeable is RollUp, Layer2 {
             transfer.numberOfOutputs
         );
         if (!_exist(vk)) {
-            return ChallengeResult(
+            return Challenge(
                 true,
                 submission.id,
                 submission.header.proposer,
@@ -803,7 +573,7 @@ contract Challengeable is RollUp, Layer2 {
         }
         SNARKsVerifier.Proof memory proof = SNARKsVerifier.proof(transfer.proof);
         if (!vk.zkSNARKs(inputs, proof)) {
-            return ChallengeResult(
+            return Challenge(
                 true,
                 submission.id,
                 submission.header.proposer,
@@ -811,7 +581,7 @@ contract Challengeable is RollUp, Layer2 {
             );
         }
         /// Passed all tests. It's a valid transaction. Challenge is not accepted
-        return ChallengeResult(
+        return Challenge(
             false,
             submission.id,
             submission.header.proposer,
@@ -823,9 +593,9 @@ contract Challengeable is RollUp, Layer2 {
         Block memory submission,
         uint withdrawalIndex
     )
-        private
+        internal
         view
-        returns (ChallengeResult memory)
+        returns (Challenge memory)
     {
         Withdrawal memory withdrawal = submission.body.withdrawals[withdrawalIndex];
 
@@ -834,7 +604,7 @@ contract Challengeable is RollUp, Layer2 {
             withdrawal.numberOfInputs != withdrawal.inclusionRefs.length ||
             withdrawal.numberOfInputs != withdrawal.nullifiers.length
         ) {
-            return ChallengeResult(
+            return Challenge(
                 true,
                 submission.id,
                 submission.header.proposer,
@@ -848,7 +618,7 @@ contract Challengeable is RollUp, Layer2 {
             0
         );
         if (!_exist(vk)) {
-            return ChallengeResult(
+            return Challenge(
                 true,
                 submission.id,
                 submission.header.proposer,
@@ -869,7 +639,7 @@ contract Challengeable is RollUp, Layer2 {
         }
         SNARKsVerifier.Proof memory proof = SNARKsVerifier.proof(withdrawal.proof);
         if (!vk.zkSNARKs(inputs, proof)) {
-            return ChallengeResult(
+            return Challenge(
                 true,
                 submission.id,
                 submission.header.proposer,
@@ -877,7 +647,7 @@ contract Challengeable is RollUp, Layer2 {
             );
         }
         /// Passed all tests. It's a valid withdrawal. Challenge is not accepted
-        return ChallengeResult(
+        return Challenge(
             false,
             submission.id,
             submission.header.proposer,
@@ -889,9 +659,9 @@ contract Challengeable is RollUp, Layer2 {
         Block memory submission,
         uint migrationIndex
     )
-        private
+        internal
         view
-        returns (ChallengeResult memory)
+        returns (Challenge memory)
     {
         Migration memory migration = submission.body.migrations[migrationIndex];
 
@@ -900,7 +670,7 @@ contract Challengeable is RollUp, Layer2 {
             migration.numberOfInputs != migration.inclusionRefs.length ||
             migration.numberOfInputs != migration.nullifiers.length
         ) {
-            return ChallengeResult(
+            return Challenge(
                 true,
                 submission.id,
                 submission.header.proposer,
@@ -914,7 +684,7 @@ contract Challengeable is RollUp, Layer2 {
             0
         );
         if (!_exist(vk)) {
-            return ChallengeResult(
+            return Challenge(
                 true,
                 submission.id,
                 submission.header.proposer,
@@ -937,7 +707,7 @@ contract Challengeable is RollUp, Layer2 {
         }
         SNARKsVerifier.Proof memory proof = SNARKsVerifier.proof(migration.proof);
         if (!vk.zkSNARKs(inputs, proof)) {
-            return ChallengeResult(
+            return Challenge(
                 true,
                 submission.id,
                 submission.header.proposer,
@@ -945,7 +715,7 @@ contract Challengeable is RollUp, Layer2 {
             );
         }
         /// Passed all tests. It's a valid migration. Challenge is not accepted
-        return ChallengeResult(
+        return Challenge(
             false,
             submission.id,
             submission.header.proposer,
@@ -958,9 +728,9 @@ contract Challengeable is RollUp, Layer2 {
         bytes32 nullifier,
         bytes32[256] memory sibling
     )
-        private
+        internal
         pure
-        returns (ChallengeResult memory)
+        returns (Challenge memory)
     {
         bytes32[] memory nullifiers = new bytes32[](1);
         bytes32[256][] memory siblings = new bytes32[256][](1);
@@ -971,7 +741,7 @@ contract Challengeable is RollUp, Layer2 {
             nullifiers,
             siblings
         );
-        return ChallengeResult(
+        return Challenge(
             updatedRoot == submission.header.prevNullifierRoot,
             submission.id,
             submission.header.proposer,
@@ -983,9 +753,9 @@ contract Challengeable is RollUp, Layer2 {
         Block memory submission,
         bytes32 nullifier
     )
-        private
+        internal
         pure
-        returns (ChallengeResult memory)
+        returns (Challenge memory)
     {
 
         uint count = 0;
@@ -1007,7 +777,7 @@ contract Challengeable is RollUp, Layer2 {
             }
             if (count >= 2) break;
         }
-        return ChallengeResult(
+        return Challenge(
             count >= 2,
             submission.id,
             submission.header.proposer,

@@ -3,7 +3,7 @@
 // import fs from 'fs-extra';
 
 // const expect = chai.expect;
-const OptimisticSNARKsRollUp = artifacts.require('OptimisticSNARKsRollUp');
+const Layer2 = artifacts.require('ZkOptimisticRollUp');
 
 const data = {
   metadata: {
@@ -96,6 +96,6 @@ const serialized = combine([
 
 contract('Simple tests', async accounts => {
   before(async () => {
-    rollUpLib = await OptimisticSNARKsRollUp.new();
+    let layer2 = await Layer2.new();
   });
 });
