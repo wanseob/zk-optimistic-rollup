@@ -24,6 +24,18 @@ template NullifyingProof(item_num) {
     /** Constraint definition */
 }
 
+/**
+ * @dev Types.sol#44L
+ *      struct Transfer{
+ *          uint8 numberOfInputs; // template parameter in
+ *          uint8 numberOfOutputs; // template parameter out
+ *          uint256 fee;
+ *          uint256[] inclusionRefs;
+ *          bytes32[] nullifiers;
+ *          uint256[] outputs;
+ *          uint256[8] proof;
+ *      }
+ */
 template ZkTransfer(tree_depth, in, out) {
     /** Private Signals */
     signal private input leaves[in];
@@ -32,9 +44,73 @@ template ZkTransfer(tree_depth, in, out) {
     signal private input utxo_details[4][out];
     /** Public Signals */
     signal input fee;
-    signal input roots[in];
+    signal input inclusion_references[in];
     signal input nullifiers[in];
-    signal output utxos[out];
+    signal input utxos[out];
+    /** Constraints */
+    // 1. Inclusion proof of all input UTXOs
+    // 2. Nullifying proof of all input UTXOs
+    // 3. Generate new utxos
+    // 4. Check zero sum proof
+}
+
+/**
+ * @dev Types.sol#54L
+ *      struct Withdrawal{
+ *          uint8 numberOfInputs; // template parameter in
+ *          uint256 amount;
+ *          uint256 fee;
+ *          uint256 to;
+ *          uint256[] inclusionRefs;
+ *          bytes32[] nullifiers;
+ *          uint256[8] proof;
+ *      }
+ */
+template ZkWithdraw(tree_depth, in) {
+    /** Private Signals */
+    signal private input leaves[in];
+    signal private input inclusion_proofs[tree_depth][in];
+    signal private input nullifying_proofs[10][in];
+    /** Public Signals */
+    signal input amount;
+    signal input fee;
+    signal input to;
+    signal input inclusion_references[in];
+    signal input nullifiers[in];
+    /** Constraints */
+    // 1. Inclusion proof of all input UTXOs
+    // 2. Nullifying proof of all input UTXOs
+    // 3. Generate new utxos
+    // 4. Check zero sum proof
+}
+
+/**
+ * @dev Types.sol#64L
+ *      struct Migration {
+ *          uint8 numberOfInputs; // template parameter in
+ *          uint256 leaf;
+ *          uint256 destination;
+ *          uint256 amount;
+ *          uint256 fee;
+ *          uint256 migrationFee;
+ *          uint256[] inclusionRefs;
+ *          bytes32[] nullifiers;
+ *          uint256[8] proof;
+ *      }
+ */
+template ZkMigration(tree_depth, in) {
+    /** Private Signals */
+    signal private input leaves[in];
+    signal private input inclusion_proofs[tree_depth][in];
+    signal private input nullifying_proofs[10][in];
+    /** Public Signals */
+    signal input leaf;
+    signal input destination;
+    signal input amount;
+    signal input fee;
+    signal input migrationFee;
+    signal input inclusion_references[in];
+    signal input nullifiers[in];
     /** Constraints */
     // 1. Inclusion proof of all input UTXOs
     // 2. Nullifying proof of all input UTXOs
