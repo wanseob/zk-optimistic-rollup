@@ -52,22 +52,22 @@ struct Transfer {
 }
 
 struct Withdrawal {
+    uint8 numberOfInputs;
     uint256 amount;
     uint256 fee;
     address to;
-    uint8 numberOfInputs;
     uint256[] inclusionRefs;
     bytes32[] nullifiers;
     uint256[8] proof;
 }
 
 struct Migration {
+    uint8 numberOfInputs;
     uint256 leaf; /// amount, salt, pubkey[2]
     address destination;
     uint256 amount;
     uint256 fee;
     uint256 migrationFee; /// migration executor will take this
-    uint8 numberOfInputs;
     uint256[] inclusionRefs;
     bytes32[] nullifiers;
     uint256[8] proof;
@@ -301,15 +301,15 @@ library Types {
             for { let i := 0 } lt(i, num_of_withdrawals) { i := add(i, 1) } {
                 // set withdrawals[i]'s ref mem address
                 mstore(add(withdrawal_pointers, mul(0x20, i)), memory_cursor)
+                // Get number of input
+                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x01)
+                let n_i := mload(sub(memory_cursor, 0x20))
                 // Get amount
                 memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
                 // Get fee
                 memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
                 // Get recipient
                 memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x14)
-                // Get number of input
-                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x01)
-                let n_i := mload(sub(memory_cursor, 0x20))
                 // inclusion refs
                 memory_cursor := assign_and_move(memory_cursor, add(memory_cursor, 0x20))
                 memory_cursor := assign_and_move(memory_cursor, n_i)
@@ -345,6 +345,9 @@ library Types {
             for { let i := 0 } lt(i, num_of_migrations) { i := add(i, 1) } {
                 // set migrations[i]'s ref mem address
                 mstore(add(migration_pointers, mul(0x20, i)), memory_cursor)
+                // Get number of input
+                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x01)
+                let n_i := mload(sub(memory_cursor, 0x20))
                 // Get leaf which is mimc(amount, salt, pubKey[2])
                 memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
                 // Get destination
@@ -355,9 +358,6 @@ library Types {
                 memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
                 // Get migrationFee
                 memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
-                // Get number of input
-                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x01)
-                let n_i := mload(sub(memory_cursor, 0x20))
                 // inclusion refs
                 memory_cursor := assign_and_move(memory_cursor, add(memory_cursor, 0x20))
                 memory_cursor := assign_and_move(memory_cursor, n_i)
