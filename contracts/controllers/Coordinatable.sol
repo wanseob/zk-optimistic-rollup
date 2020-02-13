@@ -1,7 +1,7 @@
 pragma solidity >= 0.6.0;
 
-import { Layer2 } from "./../Layer2.sol";
-import { Asset, AssetHandler } from "../../libraries/Asset.sol";
+import { Layer2 } from "../storage/Layer2.sol";
+import { Asset, AssetHandler } from "../libraries/Asset.sol";
 import {
     Proposer,
     Block,
@@ -10,7 +10,7 @@ import {
     MassDeposit,
     Withdrawable,
     Types
-} from "../../libraries/Types.sol";
+} from "../libraries/Types.sol";
 
 
 contract Coordinatable is Layer2 {
@@ -116,7 +116,7 @@ contract Coordinatable is Layer2 {
         Proposer storage proposer = Layer2.chain.proposers[finalization.header.proposer];
         proposer.reward += totalFee;
 
-        /// Update OPRU chain
+        /// Update the chain
         Layer2.chain.latest = proposal.headerHash;
     }
 

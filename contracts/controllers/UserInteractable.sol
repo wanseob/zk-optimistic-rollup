@@ -1,10 +1,10 @@
 pragma solidity >= 0.6.0;
 
-import { Layer2 } from "./../Layer2.sol";
-import { Asset, AssetHandler } from "../../libraries/Asset.sol";
-import { Hash } from "../../libraries/Hash.sol";
-import { RollUpLib } from "../../../node_modules/merkle-tree-rollup/contracts/library/RollUpLib.sol";
-import { MassDeposit, Withdrawable, Types } from "../../libraries/Types.sol";
+import { Layer2 } from "../storage/Layer2.sol";
+import { Asset, AssetHandler } from "../libraries/Asset.sol";
+import { Hash } from "../libraries/Hash.sol";
+import { RollUpLib } from "../../node_modules/merkle-tree-rollup/contracts/library/RollUpLib.sol";
+import { MassDeposit, Withdrawable, Types } from "../libraries/Types.sol";
 
 
 contract UserInteractable is Layer2 {

@@ -1,14 +1,16 @@
 pragma solidity >= 0.6.0;
 
-import { OPRU, ExtendedOPRU } from "../../../node_modules/merkle-tree-rollup/contracts/library/Types.sol";
-import { OPRULib } from "../../../node_modules/merkle-tree-rollup/contracts/library/OPRULib.sol";
-import { SMT256 } from "../../../node_modules/smt-rollup/contracts/SMT.sol";
-import { Hash } from "../../libraries/Hash.sol";
-import { Layer2 } from "./../Layer2.sol";
+import { Layer2 } from "../storage/Layer2.sol";
+import { OPRU, SplitRollUp } from "../../node_modules/merkle-tree-rollup/contracts/library/Types.sol";
+import { RollUpLib } from "../../node_modules/merkle-tree-rollup/contracts/library/RollUpLib.sol";
+import { SubTreeRollUpLib } from "../../node_modules/merkle-tree-rollup/contracts/library/SubTreeRollUpLib.sol";
+import { SMT256 } from "../../node_modules/smt-rollup/contracts/SMT.sol";
+import { Hash } from "../libraries/Hash.sol";
 
 
 contract RollUpable is Layer2 {
-    using OPRULib for *;
+    // using RollUpLib for *;
+    using SubTreeRollUpLib for *;
     using SMT256 for SMT256.OPRU;
 
     enum RollUpType { UTXO, Nullifier, Withdrawal}
@@ -29,24 +31,25 @@ contract RollUpable is Layer2 {
         uint startingIndex,
         uint[] calldata initialSiblings
     ) external {
-        ExtendedOPRU storage opru = Layer2.proof.ofUTXO.push();
-        Hash.mimc().initExtendedOPRU(
-            opru,
+        SplitRollUp storage rollUp = Layer2.proof.ofUTXORollUp.push();
+        rollUp.initWithSiblings(
+            Hash.mimc(),
             startingRoot,
             startingIndex,
+            SUB_TREE_DEPTH,
             initialSiblings
         );
-        uint id = Layer2.proof.ofUTXO.length - 1;
+        uint id = Layer2.proof.ofUTXORollUp.length - 1;
         Layer2.proof.permittedTo[uint8(RollUpType.UTXO)][id] = msg.sender;
         emit NewProofOfRollUp(RollUpType.UTXO, id);
     }
 
     function newProofOfNullifierRollUp(bytes32 prevRoot) external {
-        SMT256.OPRU storage opru = Layer2.proof.ofNullifier.push();
-        opru.prev = prevRoot;
-        opru.next = prevRoot;
-        opru.mergedLeaves = bytes32(0);
-        uint id = Layer2.proof.ofNullifier.length - 1;
+        SMT256.OPRU storage rollUp = Layer2.proof.ofNullifierRollUp.push();
+        rollUp.prev = prevRoot;
+        rollUp.next = prevRoot;
+        rollUp.mergedLeaves = bytes32(0);
+        uint id = Layer2.proof.ofNullifierRollUp.length - 1;
         Layer2.proof.permittedTo[uint8(RollUpType.Nullifier)][id] = msg.sender;
         emit NewProofOfRollUp(RollUpType.Nullifier, id);
     }
@@ -55,13 +58,9 @@ contract RollUpable is Layer2 {
         uint startingRoot,
         uint startingIndex
     ) external {
-        OPRU storage opru = Layer2.proof.ofWithdrawal.push();
-        opru.start.root = startingRoot;
-        opru.start.index = startingIndex;
-        opru.result.root = startingRoot;
-        opru.result.index = startingIndex;
-        opru.mergedLeaves = bytes32(0);
-        uint id = Layer2.proof.ofWithdrawal.length - 1;
+        SplitRollUp storage rollUp = Layer2.proof.ofWithdrawalRollUp.push();
+        rollUp.init(startingRoot, startingIndex);
+        uint id = Layer2.proof.ofWithdrawalRollUp.length - 1;
         Layer2.proof.permittedTo[uint8(RollUpType.Withdrawal)][id] = msg.sender;
         emit NewProofOfRollUp(RollUpType.Withdrawal, id);
     }
@@ -73,8 +72,12 @@ contract RollUpable is Layer2 {
         external
         requirePermission(RollUpType.Withdrawal, id)
     {
-        ExtendedOPRU storage opru = Layer2.proof.ofUTXO[id];
-        Hash.mimc().update(opru, leaves);
+        SplitRollUp storage rollUp = Layer2.proof.ofUTXORollUp[id];
+        rollUp.update(
+            Hash.mimc(),
+            SUB_TREE_DEPTH,
+            leaves
+        );
     }
 
     function updateProofOfNullifierRollUp(
@@ -85,8 +88,8 @@ contract RollUpable is Layer2 {
         external
         requirePermission(RollUpType.Nullifier, id)
     {
-        SMT256.OPRU storage opru = Layer2.proof.ofNullifier[id];
-        opru.update(leaves, siblings);
+        SMT256.OPRU storage rollUp = Layer2.proof.ofNullifierRollUp[id];
+        rollUp.update(leaves, siblings);
     }
 
     function updateProofOfWithdrawalRollUp(
@@ -97,7 +100,12 @@ contract RollUpable is Layer2 {
         external
         requirePermission(RollUpType.Withdrawal, id)
     {
-        OPRU storage opru = Layer2.proof.ofWithdrawal[id];
-        Hash.keccak().update(opru, initialSiblings, leaves);
+        SplitRollUp storage rollUp = Layer2.proof.ofWithdrawalRollUp[id];
+        rollUp.update(
+            Hash.keccak(),
+            SUB_TREE_DEPTH,
+            initialSiblings,
+            leaves
+        );
     }
 }

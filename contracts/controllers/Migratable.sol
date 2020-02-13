@@ -1,8 +1,8 @@
 pragma solidity >= 0.6.0;
 
-import { Layer2 } from "./../Layer2.sol";
-import { Asset, AssetHandler } from "../../libraries/Asset.sol";
-import { MassDeposit, MassMigration, Types } from "../../libraries/Types.sol";
+import { Layer2 } from "../storage/Layer2.sol";
+import { Asset, AssetHandler } from "../libraries/Asset.sol";
+import { MassDeposit, MassMigration, Types } from "../libraries/Types.sol";
 
 
 contract Migratable is Layer2 {

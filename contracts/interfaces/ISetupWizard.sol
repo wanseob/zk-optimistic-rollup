@@ -26,22 +26,26 @@ interface ISetupWizard {
     /**
      * @dev It connects this proxy contract to the UserInteractable controller.
      */
-    function connectUserInteractable(address addr) external;
+    function makeUserInteractable(address addr) external;
 
     /**
      * @dev It connects this proxy contract to the RollUpable controller.
      */
-    function connectRollUpable(address addr) external;
+    function makeRollUpable(address addr) external;
 
     /**
-     * @dev It connects this proxy contract to the Challengeable controller.
+     * @dev It connects this proxy contract to the Challengeable controllers.
      */
-    function connectChallengeable(address addr) external;
+    function makeChallengeable(
+        address challengeable1,
+        address challengeable2,
+        address challengeable3
+    ) external;
 
     /**
      * @dev It connects this proxy contract to the Migratable controller.
      */
-    function connectMigratable(address addr) external;
+    function makeMigratable(address addr) external;
 
     /**
      * @dev Migration process:

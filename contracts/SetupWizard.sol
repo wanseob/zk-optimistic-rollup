@@ -1,10 +1,11 @@
 pragma solidity >= 0.6.0;
 
-import { Layer2 } from "./Layer2.sol";
+import { ISetupWizard } from "./interfaces/ISetupWizard.sol";
+import { Layer2 } from "./storage/Layer2.sol";
 import { Layer2Controller } from "./Layer2Controller.sol";
-import { SNARKsVerifier } from "../libraries/SNARKs.sol";
-import { TxType, Types } from "../libraries/Types.sol";
-import { Pairing } from "../libraries/Pairing.sol";
+import { SNARKsVerifier } from "./libraries/SNARKs.sol";
+import { TxType, Types } from "./libraries/Types.sol";
+import { Pairing } from "./libraries/Pairing.sol";
 
 
 contract SetupWizard is Layer2Controller {
@@ -25,7 +26,7 @@ contract SetupWizard is Layer2Controller {
     }
 
     function registerVk(
-        TxType txType,
+        uint8 txType,
         uint8 numOfInputs,
         uint8 numOfOutputs,
         uint[2] memory alfa1,
@@ -34,7 +35,7 @@ contract SetupWizard is Layer2Controller {
         uint[2][2] memory delta2,
         uint[2][] memory ic
     ) public onlySetupWizard {
-        bytes32 txSig = Types.getSNARKsSignature(txType, numOfInputs, numOfOutputs);
+        bytes32 txSig = Types.getSNARKsSignature(TxType(txType), numOfInputs, numOfOutputs);
         SNARKsVerifier.VerifyingKey storage vk = Layer2.vks[txSig];
         vk.alfa1 = Pairing.G1Point(alfa1[0], alfa1[1]);
         vk.beta2 = Pairing.G2Point(beta2[0], beta2[1]);
@@ -45,19 +46,23 @@ contract SetupWizard is Layer2Controller {
         }
     }
 
-    function connectUserInteractable(address addr) public onlySetupWizard {
+    function makeUserInteractable(address addr) public onlySetupWizard{
         Layer2Controller._connectUserInteractable(addr);
     }
 
-    function connectRollUpable(address addr) public onlySetupWizard {
+    function makeRollUpable(address addr) public onlySetupWizard{
         Layer2Controller._connectRollUpable(addr);
     }
 
-    function connectChallengeable(address addr) public onlySetupWizard {
-        Layer2Controller._connectChallengeable(addr);
+    function makeChallengeable(
+        address challengeable1,
+        address challengeable2,
+        address challengeable3
+    ) public onlySetupWizard {
+        Layer2Controller._connectChallengeable(challengeable1, challengeable2, challengeable3);
     }
 
-    function connectMigratable(address addr) public onlySetupWizard {
+    function makeMigratable(address addr) public onlySetupWizard {
         Layer2Controller._connectMigratable(addr);
     }
 

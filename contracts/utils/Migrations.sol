@@ -1,5 +1,8 @@
 pragma solidity >= 0.6.0;
 
+/**
+ * Truffle migration contract
+ */
 contract Migrations {
     address public owner;
     uint public last_completed_migration;

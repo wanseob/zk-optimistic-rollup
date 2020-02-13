@@ -5,13 +5,13 @@ import { Pairing } from "../libraries/Pairing.sol";
 import { SNARKsVerifier } from "../libraries/SNARKs.sol";
 import { Asset } from "../libraries/Asset.sol";
 import { Configurated } from "./Configurated.sol";
-import { OPRU, ExtendedOPRU } from "../../node_modules/merkle-tree-rollup/contracts/library/Types.sol";
+import { OPRU, SplitRollUp } from "../../node_modules/merkle-tree-rollup/contracts/library/Types.sol";
 import { SMT256 } from "../../node_modules/smt-rollup/contracts/SMT.sol";
 
 struct RollUpProofs {
-    ExtendedOPRU[] ofUTXO;
-    SMT256.OPRU[] ofNullifier;
-    OPRU[] ofWithdrawal;
+    SplitRollUp[] ofUTXORollUp;
+    SMT256.OPRU[] ofNullifierRollUp;
+    SplitRollUp[] ofWithdrawalRollUp;
     mapping(uint8=>mapping(uint=>address)) permittedTo;
 }
 

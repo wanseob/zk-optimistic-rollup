@@ -18,6 +18,13 @@ interface IChallengeable {
     function challengeNullifierRollUp(uint proofId, bytes32[256][] calldata siblings, bytes calldata submission) external;
 
     /**
+     * @dev Challenge when the submitted block's withdrawal tree transition is invalid.
+     * @param proofId Id of your withdrawal roll up proof. See 'RollUpable.sol'.
+     * @param submission The proposal data which is exactly same with the submitted.
+     */
+    function challengeWithdrawalRollUp(uint proofId, bytes calldata submission) external;
+
+    /**
      * @dev Challenge when the submitted header's deposit root is invalid.
      *      The Deposit root in the header should be the merkle root of the total
      *      deposits to newly append to the UTXO tree.
