@@ -102,7 +102,7 @@ module.exports = {
       // }
     },
     external: {
-      command: 'node utils/mimcGenerator.js && node utils/erc20Generator.js',
+      command: 'node utils/poseidonGenerator.js && node utils/erc20Generator.js',
       targets: [
         {
           path: 'build/generated/*.json'

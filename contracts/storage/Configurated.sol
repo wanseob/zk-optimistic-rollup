@@ -11,6 +11,6 @@ contract Configurated {
     uint constant public MINIMUM_STAKE = 32 ether;
     uint constant public REF_DEPTH = 128;
     uint constant public POOL_SIZE = (1 << 31);
-    uint constant public SUB_TREE_DEPTH = 6;
+    uint constant public SUB_TREE_DEPTH = 5; // 32 items at once
     uint constant public SUB_TREE_SIZE = 1 << SUB_TREE_DEPTH;
 }

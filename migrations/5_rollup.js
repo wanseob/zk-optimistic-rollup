@@ -1,7 +1,7 @@
-const MiMC = artifacts.require('MiMC');
+const Poseidon = artifacts.require('Poseidon');
 const RollUpable = artifacts.require('RollUpable');
 
 module.exports = function(deployer) {
-  deployer.link(MiMC, RollUpable);
+  deployer.link(Poseidon, RollUpable);
   deployer.deploy(RollUpable);
 };

@@ -1,4 +1,4 @@
-const MiMC = artifacts.require('MiMC');
+const Poseidon = artifacts.require('Poseidon');
 const TestERC20 = artifacts.require('TestERC20');
 const UserInteractable = artifacts.require('UserInteractable');
 const RollUpable = artifacts.require('RollUpable');

@@ -3,7 +3,7 @@ pragma solidity >= 0.6.0;
 interface IUserInteractable {
     /**
      * @notice Users can use zkopru network by submitting a new homomorphically hiden note.
-     * @param note Should be same with the MiMC sponge of (amount, fee, pubKey)
+     * @param note Should be same with the poseidon hash of (amount, fee, pubKey)
      * @param amount Amount to deposit
      * @param fee Amount of fee to give to the coordinator
      * @param pubKey EdDSA public key to use in the zkopru network

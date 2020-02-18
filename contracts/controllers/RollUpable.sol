@@ -33,7 +33,7 @@ contract RollUpable is Layer2 {
     ) external {
         SplitRollUp storage rollUp = Layer2.proof.ofUTXORollUp.push();
         rollUp.initWithSiblings(
-            Hash.mimc(),
+            Hash.poseidon(),
             startingRoot,
             startingIndex,
             SUB_TREE_DEPTH,
@@ -74,7 +74,7 @@ contract RollUpable is Layer2 {
     {
         SplitRollUp storage rollUp = Layer2.proof.ofUTXORollUp[id];
         rollUp.update(
-            Hash.mimc(),
+            Hash.poseidon(),
             SUB_TREE_DEPTH,
             leaves
         );

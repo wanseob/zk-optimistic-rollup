@@ -5,6 +5,7 @@
   "main": "dist/src/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
+    "compile": "./node_modules/.bin/truffle compile",
     "circuit": "./node_modules/.bin/circom circuits/zktransfer.circom -o build/zktransfer.json",
     "circuitInfo": "./node_modules/.bin/snarkjs info -c build/zktransfer.json",
     "setup": "./node_modules/.bin/snarkjs setup -c build/zktransfer.json --pk build/proving_key.json --vk build/verification_key.json",
@@ -41,7 +42,7 @@
     "fs-extra": "^8.1.0",
     "husky": "^3.0.9",
     "lint-staged": "^9.4.2",
-    "merkle-tree-rollup": "^1.0.0",
+    "merkle-tree-rollup": "^1.1.4",
     "mocha": "^6.2.2",
     "prettier": "^1.19.1",
     "smt-rollup": "github:wilsonbeam/smt-rollup",

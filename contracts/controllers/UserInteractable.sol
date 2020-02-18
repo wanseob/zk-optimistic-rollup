@@ -2,7 +2,7 @@ pragma solidity >= 0.6.0;
 
 import { Layer2 } from "../storage/Layer2.sol";
 import { Asset, AssetHandler } from "../libraries/Asset.sol";
-import { Hash } from "../libraries/Hash.sol";
+import { Hash, Poseidon } from "../libraries/Hash.sol";
 import { RollUpLib } from "../../node_modules/merkle-tree-rollup/contracts/library/RollUpLib.sol";
 import { MassDeposit, Withdrawable, Types } from "../libraries/Types.sol";
 
@@ -27,7 +27,7 @@ contract UserInteractable is Layer2 {
         inputs[0] = amount;
         inputs[1] = pubKey[0];
         inputs[2] = pubKey[1];
-        require(note == Hash.mimcHash(inputs), "Invalid hash value");
+        require(note == Poseidon.poseidon(inputs), "Invalid hash value");
         /// Receive token
         Layer2.asset.depositFrom(address(this), amount + fee);
         /// Get the mass deposit to update

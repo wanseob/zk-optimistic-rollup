@@ -109,7 +109,7 @@ contract Challengeable1 is Challengeable {
             );
         }
 
-        /// Check validity of the roll up using the storage based MiMC roll up
+        /// Check validity of the roll up using the storage based Poseidon sub-tree roll up
         SplitRollUp memory rollUpProof = Layer2.proof.ofUTXORollUp[utxoRollUpId];
         bool isValidRollUp = rollUpProof.verify(
             SubTreeRollUpLib.newSubTreeOPRU(
@@ -221,7 +221,7 @@ contract Challengeable1 is Challengeable {
             );
         }
 
-        /// Check validity of the roll up using the storage based MiMC roll up
+        /// Check validity of the roll up using the storage based Keccak sub-tree roll up
         SplitRollUp memory proof = Layer2.proof.ofWithdrawalRollUp[withdrawalRollUpId];
         uint[] memory uintLeaves;
         assembly {

@@ -18,7 +18,7 @@ interface IRollUpable {
 
     /**
      * @dev Challenger appends items to the utxo tree and record the intermediate result on the storage.
-     *      This MiMC roll up costs around 1.4 million to append an item.
+     *      This Poseidon sub tree roll up costs around 5.8 million gas to append 32 items.
      */
     function updateProofOfUTXORollUp(uint id, uint[] calldata leaves) external;
 
@@ -29,6 +29,7 @@ interface IRollUpable {
 
     /**
      * @dev Challenger appends items to the withdrawal tree and record the intermediate result on the storage
+     *      This keccak sub tree roll up costs around 300k gas to append 32 items.
      */
     function updateProofOfWithdrawalRollUp(uint id, uint[] calldata initialSiblings, uint[] calldata leaves) external;
 }

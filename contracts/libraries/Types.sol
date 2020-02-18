@@ -348,7 +348,7 @@ library Types {
                 // Get number of input
                 memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x01)
                 let n_i := mload(sub(memory_cursor, 0x20))
-                // Get leaf which is mimc(amount, salt, pubKey[2])
+                // Get the leaf that is the resulf of poseidon(amount, salt, pubKey[2])
                 memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
                 // Get destination
                 memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x14)
