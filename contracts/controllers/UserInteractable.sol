@@ -16,6 +16,7 @@ contract UserInteractable is Layer2 {
     function deposit(
         uint note,
         uint amount,
+        uint salt,
         uint fee,
         uint[2] memory pubKey
     ) public payable {
@@ -27,6 +28,7 @@ contract UserInteractable is Layer2 {
         inputs[0] = amount;
         inputs[1] = pubKey[0];
         inputs[2] = pubKey[1];
+        inputs[3] = salt;
         require(note == Poseidon.poseidon(inputs), "Invalid hash value");
         /// Receive token
         Layer2.asset.depositFrom(address(this), amount + fee);
