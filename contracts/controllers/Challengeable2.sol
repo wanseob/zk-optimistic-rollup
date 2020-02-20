@@ -74,7 +74,7 @@ contract Challengeable2 is Challengeable {
         );
     }
 
-    function _challengeResultOfTransferRoot(
+    function _challengeResultOfL2TxRoot(
         Block memory submission
     )
         internal
@@ -82,7 +82,7 @@ contract Challengeable2 is Challengeable {
         returns (Challenge memory)
     {
         return Challenge(
-            submission.header.transferRoot != submission.body.transfers.root(),
+            submission.header.l2TxRoot != submission.body.l2Txs.root(),
             submission.id,
             submission.header.proposer,
             "Transfer root validation"
@@ -127,8 +127,8 @@ contract Challengeable2 is Challengeable {
         returns (Challenge memory)
     {
         uint totalFee = 0;
-        for (uint i = 0; i < submission.body.transfers.length; i ++) {
-            totalFee += submission.body.transfers[i].fee;
+        for (uint i = 0; i < submission.body.l2Txs.length; i ++) {
+            totalFee += submission.body.l2Txs[i].fee;
         }
         for (uint i = 0; i < submission.body.withdrawals.length; i ++) {
             totalFee += submission.body.withdrawals[i].fee;

@@ -6,6 +6,9 @@ interface IERC20 {
     function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
 }
 
+interface IERC721 {
+    function transferFrom(address from, address to, uint256 tokenId) external;
+}
 
 struct Asset {
     address erc20;

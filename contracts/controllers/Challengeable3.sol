@@ -10,7 +10,7 @@ import {
     Challenge,
     Migration,
     Withdrawal,
-    Transfer,
+    L2Tx,
     Types
 } from "../libraries/Types.sol";
 
@@ -38,12 +38,12 @@ contract Challengeable3 is Challengeable {
     function challengeTransaction(TxType txType, uint index, bytes calldata) external {
         Block memory submission = Types.blockFromCalldataAt(2);
         function (Block memory, uint) internal view returns(Challenge memory) validate;
-        if (txType == TxType.Transfer) {
-            validate = _challengeResultOfTransfer;
-        } else if (txType == TxType.Withdrawal) {
+        if (txType == TxType.Withdrawal) {
             validate = _challengeResultOfWithdrawal;
         } else if (txType == TxType.Migration) {
             validate = _challengeResultOfMigration;
+        } else {
+            validate = _challengeResultOfL2Tx;
         }
         Challenge memory result = validate(submission, index);
         _execute(result);
@@ -87,23 +87,6 @@ contract Challengeable3 is Challengeable {
         return false;
     }
 
-    /** Internal functions to help reusable clean code */
-    function _getVerifyingKey(
-        TxType txType,
-        uint8 numberOfInputs,
-        uint8 numberOfOutputs
-    ) internal view returns (SNARKsVerifier.VerifyingKey memory) {
-        return vks[Types.getSNARKsSignature(txType, numberOfInputs, numberOfOutputs)];
-    }
-
-    function _exist(SNARKsVerifier.VerifyingKey memory vk) internal pure returns (bool) {
-        if (vk.alfa1.X != 0) {
-            return true;
-        } else {
-            return false;
-        }
-    }
-
     function _challengeResultOfInclusion(
         Block memory submission,
         TxType txType,
@@ -116,8 +99,8 @@ contract Challengeable3 is Challengeable {
     {
         uint ref;
         if (txType == TxType.Transfer) {
-            Transfer memory transfer = submission.body.transfers[txIndex];
-            ref = transfer.inclusionRefs[refIndex];
+            L2Tx memory l2Tx = submission.body.l2Txs[txIndex];
+            ref = l2Tx.inclusionRefs[refIndex];
         } else if (txType == TxType.Withdrawal) {
             Withdrawal memory withdrawal = submission.body.withdrawals[txIndex];
             ref = withdrawal.inclusionRefs[refIndex];
@@ -134,7 +117,7 @@ contract Challengeable3 is Challengeable {
         );
     }
 
-    function _challengeResultOfTransfer(
+    function _challengeResultOfL2Tx(
         Block memory submission,
         uint txIndex
     )
@@ -142,12 +125,12 @@ contract Challengeable3 is Challengeable {
         view
         returns (Challenge memory)
     {
-        Transfer memory transfer = submission.body.transfers[txIndex];
+        L2Tx memory l2Tx = submission.body.l2Txs[txIndex];
 
         /// Slash if the length of the array is not same with the metadata
         if (
-            transfer.numberOfInputs != transfer.inclusionRefs.length ||
-            transfer.numberOfInputs != transfer.nullifiers.length
+            l2Tx.numberOfInputs != l2Tx.inclusionRefs.length ||
+            l2Tx.numberOfInputs != l2Tx.nullifiers.length
         ) {
             return Challenge(
                 true,
@@ -158,9 +141,9 @@ contract Challengeable3 is Challengeable {
         }
         /// Slash if the transaction type is not supported
         SNARKsVerifier.VerifyingKey memory vk = _getVerifyingKey(
-            TxType.Transfer,
-            transfer.numberOfInputs,
-            transfer.numberOfOutputs
+            TxType(l2Tx.txType),
+            l2Tx.numberOfInputs,
+            l2Tx.numberOfOutputs
         );
         if (!_exist(vk)) {
             return Challenge(
@@ -171,19 +154,19 @@ contract Challengeable3 is Challengeable {
             );
         }
         /// Slash if its zk SNARKs verification returns false
-        uint[] memory inputs = new uint[](1 + 2*transfer.numberOfInputs + transfer.numberOfOutputs);
+        uint[] memory inputs = new uint[](1 + 2*l2Tx.numberOfInputs + l2Tx.numberOfOutputs);
         uint index = 0;
-        inputs[index++] = uint(transfer.fee);
-        for (uint i = 0; i < transfer.numberOfInputs; i++) {
-            inputs[index++] = uint(transfer.inclusionRefs[i]);
+        inputs[index++] = uint(l2Tx.fee);
+        for (uint i = 0; i < l2Tx.numberOfInputs; i++) {
+            inputs[index++] = uint(l2Tx.inclusionRefs[i]);
         }
-        for (uint i = 0; i < transfer.numberOfInputs; i++) {
-            inputs[index++] = uint(transfer.nullifiers[i]);
+        for (uint i = 0; i < l2Tx.numberOfInputs; i++) {
+            inputs[index++] = uint(l2Tx.nullifiers[i]);
         }
-        for (uint i = 0; i < transfer.numberOfOutputs; i++) {
-            inputs[index++] = uint(transfer.outputs[i]);
+        for (uint i = 0; i < l2Tx.numberOfOutputs; i++) {
+            inputs[index++] = uint(l2Tx.outputs[i]);
         }
-        SNARKsVerifier.Proof memory proof = SNARKsVerifier.proof(transfer.proof);
+        SNARKsVerifier.Proof memory proof = SNARKsVerifier.proof(l2Tx.proof);
         if (!vk.zkSNARKs(inputs, proof)) {
             return Challenge(
                 true,
@@ -197,7 +180,7 @@ contract Challengeable3 is Challengeable {
             false,
             submission.id,
             submission.header.proposer,
-            "Valid transfer"
+            "Valid l2Tx"
         );
     }
 
@@ -238,11 +221,12 @@ contract Challengeable3 is Challengeable {
             );
         }
         /// Slash if its zk SNARKs verification returns false
-        uint[] memory inputs = new uint[](3 + 2 * withdrawal.numberOfInputs);
+        uint[] memory inputs = new uint[](4 + 2 * withdrawal.numberOfInputs);
         uint index = 0;
         inputs[index++] = uint(withdrawal.amount);
         inputs[index++] = uint(withdrawal.fee);
         inputs[index++] = uint(withdrawal.to);
+        inputs[index++] = uint(withdrawal.nft);
         for (uint i = 0; i < withdrawal.numberOfInputs; i++) {
             inputs[index++] = uint(withdrawal.inclusionRefs[i]);
         }
@@ -348,7 +332,7 @@ contract Challengeable3 is Challengeable {
     {
         bytes32 usedNullifier;
         if (txType == TxType.Transfer) {
-            usedNullifier = submission.body.transfers[txIndex].nullifiers[nullifierIndex];
+            usedNullifier = submission.body.l2Txs[txIndex].nullifiers[nullifierIndex];
         } else if (txType == TxType.Withdrawal) {
             usedNullifier = submission.body.withdrawals[txIndex].nullifiers[nullifierIndex];
         } else if (txType == TxType.Migration) {
@@ -380,11 +364,11 @@ contract Challengeable3 is Challengeable {
         returns (Challenge memory)
     {
         uint count = 0;
-        for (uint i = 0; i < submission.body.transfers.length; i++) {
-            Transfer memory transfer = submission.body.transfers[i];
-            for (uint j = 0; j < transfer.nullifiers.length; j++) {
+        for (uint i = 0; i < submission.body.l2Txs.length; i++) {
+            L2Tx memory l2Tx = submission.body.l2Txs[i];
+            for (uint j = 0; j < l2Tx.nullifiers.length; j++) {
                 /// Found matched nullifier
-                if (transfer.nullifiers[j] == nullifier) count++;
+                if (l2Tx.nullifiers[j] == nullifier) count++;
                 if (count >= 2) break;
             }
             if (count >= 2) break;
@@ -413,5 +397,22 @@ contract Challengeable3 is Challengeable {
             submission.header.proposer,
             "Duplicated nullifier"
         );
+    }
+
+    /** Internal functions to help reusable clean code */
+    function _getVerifyingKey(
+        TxType txType,
+        uint8 numberOfInputs,
+        uint8 numberOfOutputs
+    ) internal view returns (SNARKsVerifier.VerifyingKey memory) {
+        return vks[Types.getSNARKsSignature(txType, numberOfInputs, numberOfOutputs)];
+    }
+
+    function _exist(SNARKsVerifier.VerifyingKey memory vk) internal pure returns (bool) {
+        if (vk.alfa1.X != 0) {
+            return true;
+        } else {
+            return false;
+        }
     }
 }

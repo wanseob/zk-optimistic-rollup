@@ -39,7 +39,7 @@ interface IChallengeable {
      *      tx hash values.
      * @param submission The proposal data which is exactly same with the submitted.
      */
-    function challengeTransferRoot(bytes calldata submission) external;
+    function challengeL2TxRoot(bytes calldata submission) external;
 
     /**
      * @dev Challenge when the submitted header's withdrawal root is invalid.

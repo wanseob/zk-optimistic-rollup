@@ -1,5 +1,5 @@
 pragma solidity >= 0.6.0;
-enum TxType { Transfer, Withdrawal, Migration }
+enum TxType { Deposit, Withdrawal, Migration, Transfer, Trade, Burn }
 
 struct Blockchain {
     bytes32 latest;
@@ -28,20 +28,33 @@ struct MassDeposit {
     bool committed;
 }
 
+struct MassMigration {
+    address destination;
+    uint256 amount;
+    uint256 migrationFee;
+    bytes32 mergedLeaves;
+    uint256 length;
+}
+
 struct Withdrawable {
+    /// Merkle tree of Withdrawable notes
     bytes32 root;
     uint index;
 }
 
-/**
-struct Deposit {
-    uint256 amount;
-    uint256 salt;
-    uint[2] pubKey;
-}
-*/
+// struct Transfer {
+//     uint8 numberOfInputs;
+//     uint8 numberOfOutputs;
+//     uint256 fee;
+//     uint256[] inclusionRefs;
+//     bytes32[] nullifiers;
+//     uint256[] outputs;
+//     uint256[8] proof;
+// }
 
-struct Transfer {
+/** Transaction inside the layer 2 */
+struct L2Tx {
+    uint8 txType; // l2Tx / trade / burn
     uint8 numberOfInputs;
     uint8 numberOfOutputs;
     uint256 fee;
@@ -51,11 +64,19 @@ struct Transfer {
     uint256[8] proof;
 }
 
+/** Transactions between the layer 1 and layer 2 */
+struct Deposit {
+    uint256 amount;
+    uint256 salt;
+    uint[2] pubKey;
+    uint256 nft;
+}
 struct Withdrawal {
     uint8 numberOfInputs;
     uint256 amount;
     uint256 fee;
     address to;
+    bytes32 nft;
     uint256[] inclusionRefs;
     bytes32[] nullifiers;
     uint256[8] proof;
@@ -71,14 +92,6 @@ struct Migration {
     uint256[] inclusionRefs;
     bytes32[] nullifiers;
     uint256[8] proof;
-}
-
-struct MassMigration {
-    address destination;
-    uint256 amount;
-    uint256 migrationFee;
-    bytes32 mergedLeaves;
-    uint256 length;
 }
 
 struct Header {
@@ -101,9 +114,10 @@ struct Header {
 
     /** Transactions */
     bytes32 depositRoot;
-    bytes32 transferRoot;
+    bytes32 l2TxRoot;
     bytes32 withdrawalRoot;
     bytes32 migrationRoot;
+    bytes32 tradesRoot;
 
     /** Etc */
     uint256 fee;
@@ -113,7 +127,7 @@ struct Header {
 
 struct Body {
     uint[] depositIds;
-    Transfer[] transfers;
+    L2Tx[] l2Txs;
     Withdrawal[] withdrawals;
     Migration[] migrations;
 }
@@ -168,7 +182,7 @@ library Types {
         bytes32 id;
         Header memory header;
         uint[] memory depositIds;
-        Transfer[] memory txs;
+        L2Tx[] memory l2Txs;
         Withdrawal[] memory withdrawals;
         Migration[] memory migrations;
         assembly {
@@ -217,7 +231,7 @@ library Types {
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // nextWithdrawalIndex
             /// transaction result
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // depositRoot
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // transferRoot
+            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // l2TxRoot
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // withdrawalRoot
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // migrationRoot
             /// Etc
@@ -237,21 +251,23 @@ library Types {
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, mul(num_of_deposits, 0x20))
 
 
-            /** Body - Transfers */
-            // Read the size of the transfer array
+            /** Body - L2Txs */
+            // Read the size of the l2Tx array
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x02)
             let num_of_txs := mload(sub(memory_cursor, 0x20))
-            // Allocate memory for the array of transfers
-            txs := memory_cursor
+            // Allocate memory for the array of l2Txs
+            l2Txs := memory_cursor
             // Set length of the array
             memory_cursor := assign_and_move(memory_cursor, num_of_txs)
             // Pointers of each item of the array
             let tx_pointers := memory_cursor
             memory_cursor := add(memory_cursor, mul(0x20, num_of_txs))
-            // Assign transfer object to the memory address and let the pointer indicate the position
+            // Assign l2Tx object to the memory address and let the pointer indicate the position
             for { let i := 0 } lt(i, num_of_txs) { i := add(i, 1) } {
                 // set tx[i]'s ref mem address
                 mstore(add(tx_pointers, mul(0x20, i)), memory_cursor)
+                // Get tx type
+                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x01)
                 // Get number of input
                 memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x01)
                 let n_i := mload(sub(memory_cursor, 0x20))
@@ -310,6 +326,8 @@ library Types {
                 memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
                 // Get recipient
                 memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x14)
+                // Get nft
+                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
                 // inclusion refs
                 memory_cursor := assign_and_move(memory_cursor, add(memory_cursor, 0x20))
                 memory_cursor := assign_and_move(memory_cursor, n_i)
@@ -382,7 +400,7 @@ library Types {
             // Deallocate memory
             mstore(0x40, memory_cursor)
         }
-        Body memory body = Body(depositIds, txs, withdrawals, migrations);
+        Body memory body = Body(depositIds, l2Txs, withdrawals, migrations);
         return Block(id, header, body);
     }
 
@@ -446,7 +464,7 @@ library Types {
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // nextWithdrawalIndex
             /// transaction result
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // depositRoot
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // transferRoot
+            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // l2TxRoot
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // withdrawalRoot
             memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // fee
             /// Other metadata
@@ -506,16 +524,16 @@ library Types {
         return headerHash;
     }
 
-    function hash(Transfer memory transfer) internal pure returns (bytes32) {
+    function hash(L2Tx memory l2Tx) internal pure returns (bytes32) {
         return keccak256(
             abi.encodePacked(
-                transfer.numberOfInputs,
-                transfer.numberOfOutputs,
-                transfer.fee,
-                transfer.inclusionRefs,
-                transfer.nullifiers,
-                transfer.outputs,
-                transfer.proof
+                l2Tx.numberOfInputs,
+                l2Tx.numberOfOutputs,
+                l2Tx.fee,
+                l2Tx.inclusionRefs,
+                l2Tx.nullifiers,
+                l2Tx.outputs,
+                l2Tx.proof
             )
         );
     }
@@ -545,10 +563,10 @@ library Types {
         );
     }
 
-    function root(Transfer[] memory transfers) internal pure returns (bytes32) {
-        bytes32[] memory leaves = new bytes32[](transfers.length);
-        for(uint i = 0; i < transfers.length; i++) {
-            leaves[i] = hash(transfers[i]);
+    function root(L2Tx[] memory l2Txs) internal pure returns (bytes32) {
+        bytes32[] memory leaves = new bytes32[](l2Txs.length);
+        for(uint i = 0; i < l2Txs.length; i++) {
+            leaves[i] = hash(l2Txs[i]);
         }
         return root(leaves);
     }
@@ -636,10 +654,10 @@ library Types {
     function maxChallengeCost(Block memory submission) internal pure returns (uint256 maxCost) {
         uint mtRollUpCost = 0;
         uint smtRollUpCost = 0;
-        for(uint i = 0; i < submission.body.transfers.length; i++) {
-            Transfer memory transfer = submission.body.transfers[i];
-            mtRollUpCost += transfer.numberOfInputs * (16 * 32 * 257);
-            smtRollUpCost += transfer.numberOfOutputs * (16 * 32 * 257);
+        for(uint i = 0; i < submission.body.l2Txs.length; i++) {
+            L2Tx memory l2Tx = submission.body.l2Txs[i];
+            mtRollUpCost += l2Tx.numberOfInputs * (16 * 32 * 257);
+            smtRollUpCost += l2Tx.numberOfOutputs * (16 * 32 * 257);
         }
         maxCost = mtRollUpCost > smtRollUpCost ? mtRollUpCost : smtRollUpCost;
     }

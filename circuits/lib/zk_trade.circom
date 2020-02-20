@@ -1,11 +1,18 @@
-include "./utils.circom";
 include "./note_proof.circom";
 include "./inclusion_proof.circom";
 include "./nullifier_proof.circom";
+include "./utils.circom";
 include "../../node_modules/circomlib/circuits/eddsaposeidon.circom";
-include "../../node_modules/circomlib/circuits/comparators.circom";
 
-template ZkTransfer(tree_depth, in, out) {
+template ZkTrade(tree_depth, in, out) {
+    /** Private Signals for trade */
+    signal private input price; /// amount of price should be transfered from the buyer to the seller 
+    signal private input is_selling; ///
+    signal private input seller[2]; /// needs signature of the seller for this trade
+    signal private input buyer[2]; /// Every new nft including note's owner should be the buyer
+    signal private input trading_asset;
+    signal private input shared_key;
+    
     /** Private Signals */
     signal private input notes[in];
     signal private input amount[in];
@@ -26,14 +33,91 @@ template ZkTransfer(tree_depth, in, out) {
     signal input utxos[out];
 
     /** Constraints */
-    // 1. Note proof
-    // 2. Ownership proof
-    // 3. Inclusion proof of all input UTXOs
-    // 4. Nullifying proof of all input UTXOs
-    // 5. Generate new utxos
-    // 6. Check zero sum proof
+    component maker[2];
+    maker[0] = IfElseThen(1);
+    maker[1] = IfElseThen(1);
+    maker[0].obj1[0] <== is_selling;
+    maker[0].obj2[0] <== 1;
+    maker[0].if_v <== seller[0];
+    maker[0].else_v <== buyer[0];
+    maker[1].obj1[0] <== is_selling;
+    maker[1].obj2[0] <== 1;
+    maker[1].if_v <== seller[1];
+    maker[1].else_v <== buyer[1];
 
+    // 1-1. Taker pays the fee
+    var prev_amount_of_maker;
+    var next_amount_of_maker;
+    component inflow_token_of_maker[in];
+    component outflow_token_of_maker[out];
+    for(var i = 0; i < in; i++) {
+        // Calculate inflow amount of tokens of the maker
+        inflow_token_of_maker[i] = IfElseThen(2);
+        inflow_token_of_maker[i].obj1[0] <== maker[0].out;
+        inflow_token_of_maker[i].obj1[1] <== maker[1].out;
+        inflow_token_of_maker[i].obj2[0] <== pub_keys[0][i];
+        inflow_token_of_maker[i].obj2[1] <== pub_keys[1][i];
+        inflow_token_of_maker[i].if_v <== amount[i];
+        inflow_token_of_maker[i].else_v <== 0;
+        prev_amount_of_maker += inflow_token_of_maker[i].out;
+    }
+    for(var i = 0; i < out; i++) {
+        // Calculate outflow amount of tokens of the maker
+        outflow_token_of_maker[i] = IfElseThen(2);
+        outflow_token_of_maker[i].obj1[0] <== maker[0].out;
+        outflow_token_of_maker[i].obj1[1] <== maker[1].out;
+        outflow_token_of_maker[i].obj2[0] <== pub_keys[0][i];
+        outflow_token_of_maker[i].obj2[1] <== pub_keys[1][i];
+        outflow_token_of_maker[i].if_v <== utxo_amount[i];
+        outflow_token_of_maker[i].else_v <== 0;
+        next_amount_of_maker += outflow_token_of_maker[i].out;
+    }
+    component expected_next_bal_of_maker = IfElseThen(1);
+    expected_next_bal_of_maker.obj1[0] <== is_selling;
+    expected_next_bal_of_maker.obj2[0] <== 1;
+    /// Seller is the maker
+    expected_next_bal_of_maker.if_v <== prev_amount_of_maker + price;
+    /// Seller is the taker
+    expected_next_bal_of_maker.else_v <== prev_amount_of_maker + price - fee;
+    expected_next_bal_of_maker.out === next_amount_of_maker
+
+    var inflow_target_nft_of_seller;
+    var outflow_target_nft_of_buyer;
+    component inflow_nft_filter[in];
+    component outflow_nft_filter[in];
+    for(var i = 0; i < in; i++) {
+        // Check that the seller owned the target nft
+        inflow_nft_filter[i] = IfElseThen(3);
+        inflow_nft_filter[i].obj1[0] <== seller[0];
+        inflow_nft_filter[i].obj1[1] <== seller[1];
+        inflow_nft_filter[i].obj1[2] <== trading_asset;
+        inflow_nft_filter[i].obj2[0] <== pub_keys[0][i];
+        inflow_nft_filter[i].obj2[1] <== pub_keys[1][i];
+        inflow_nft_filter[i].obj2[2] <== nfts[i];
+        inflow_nft_filter[i].if_v <== 1;
+        inflow_nft_filter[i].else_v <== 0;
+        inflow_target_nft_of_seller += inflow_nft_filter[i].out;
+    }
+    for(var i = 0; i < out; i++) {
+        // Check that the buyer owns the target nft
+        outflow_nft_filter[i] = IfElseThen(3);
+        outflow_nft_filter[i].obj1[0] <== buyer[0];
+        outflow_nft_filter[i].obj1[1] <== buyer[1];
+        outflow_nft_filter[i].obj1[2] <== trading_asset;
+        outflow_nft_filter[i].obj2[0] <== utxo_pub_keys[0][i];
+        outflow_nft_filter[i].obj2[1] <== utxo_pub_keys[1][i];
+        outflow_nft_filter[i].obj2[2] <== utxo_nfts[i];
+        outflow_nft_filter[i].if_v <== 1;
+        outflow_nft_filter[i].else_v <== 0;
+        outflow_target_nft_of_buyer += outflow_nft_filter[i].out;
+    }
+    inflow_target_nft_of_seller === 1
+    outflow_target_nft_of_buyer === 1
+
+    // 1-2. need eddsa from seller for the trade_hash = poseidon(price, buyer[2], trading_asset)
     component spending[in];
+    component signing_msg[in];
+    component trade_hash[in];
     component ownership_proof[in];
     component nullifier_proof[in];
     component inclusion_proof[in];
@@ -48,11 +132,26 @@ template ZkTransfer(tree_depth, in, out) {
         spending[i].amount <== amount[i];
 
         // 2. The signature should match with the pub key of the note
+        // Buyer can process this trade using seller's signature
+        trade_hash[i] = Poseidon(6, 6, 8, 57);   // Constant
+        trade_hash[i].inputs[0] <== spending[i].note;
+        trade_hash[i].inputs[1] <== price;
+        trade_hash[i].inputs[2] <== trading_asset;
+        trade_hash[i].inputs[3] <== buyer[0];
+        trade_hash[i].inputs[4] <== buyer[1];
+        trade_hash[i].inputs[5] <== shared_key;
+        signing_msg[i] = IfElseThen(2);
+        signing_msg[i].obj1[0] <== pub_keys[0][i];
+        signing_msg[i].obj1[1] <== pub_keys[1][i];
+        signing_msg[i].obj2[0] <== seller[0];
+        signing_msg[i].obj2[1] <== seller[1];
+        signing_msg[i].if_v <== trade_hash[i].out;
+        signing_msg[i].else_v <== spending[i].note;
         ownership_proof[i] = EdDSAPoseidonVerifier();
         ownership_proof[i].enabled <== 1;
         ownership_proof[i].R8x <== spending[i].pub_key[0];
         ownership_proof[i].R8y <== spending[i].pub_key[1];
-        ownership_proof[i].M <== spending[i].note;
+        ownership_proof[i].M <== signing_msg[i].out;
         ownership_proof[i].Ax <== signatures[0][i];
         ownership_proof[i].Ay <== signatures[1][i];
         ownership_proof[i].S <== signatures[2][i];

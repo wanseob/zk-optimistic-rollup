@@ -9,7 +9,7 @@ import { SMT256 } from "../../node_modules/smt-rollup/contracts/SMT.sol";
 import {
     Block,
     Challenge,
-    Transfer,
+    L2Tx,
     Withdrawal,
     Migration,
     Types
@@ -68,9 +68,9 @@ contract Challengeable1 is Challengeable {
         /// Get total outputs
         uint numOfItems = 0;
         numOfItems += deposits.length;
-        for (uint i = 0; i < submission.body.transfers.length; i++) {
-            Transfer memory transfer = submission.body.transfers[i];
-            numOfItems += transfer.outputs.length;
+        for (uint i = 0; i < submission.body.l2Txs.length; i++) {
+            L2Tx memory l2Tx = submission.body.l2Txs[i];
+            numOfItems += l2Tx.outputs.length;
         }
 
         /// Assign a new array
@@ -80,10 +80,10 @@ contract Challengeable1 is Challengeable {
         for (uint i = 0; i < deposits.length; i++) {
             outputs[index++] = deposits[i];
         }
-        for (uint i = 0; i < submission.body.transfers.length; i++) {
-            Transfer memory transfer = submission.body.transfers[i];
-            for (uint j = 0; j < transfer.outputs.length; j++) {
-                outputs[index++] = uint(transfer.outputs[j]);
+        for (uint i = 0; i < submission.body.l2Txs.length; i++) {
+            L2Tx memory l2Tx = submission.body.l2Txs[i];
+            for (uint j = 0; j < l2Tx.outputs.length; j++) {
+                outputs[index++] = uint(l2Tx.outputs[j]);
             }
         }
 
@@ -143,13 +143,13 @@ contract Challengeable1 is Challengeable {
         bytes32[] memory nullifiers = new bytes32[](numOfNullifiers);
         /// Get outputs to append
         uint index = 0;
-        for (uint i = 0; i < submission.body.transfers.length; i++) {
-            Transfer memory transfer = submission.body.transfers[i];
-            for (uint j = 0; j < transfer.nullifiers.length; j++) {
-                nullifiers[index++] = transfer.nullifiers[j];
+        for (uint i = 0; i < submission.body.l2Txs.length; i++) {
+            L2Tx memory l2Tx = submission.body.l2Txs[i];
+            for (uint j = 0; j < l2Tx.nullifiers.length; j++) {
+                nullifiers[index++] = l2Tx.nullifiers[j];
             }
         }
-        for (uint i = 0; i < submission.body.transfers.length; i++) {
+        for (uint i = 0; i < submission.body.l2Txs.length; i++) {
             Withdrawal memory withdrawal = submission.body.withdrawals[i];
             for (uint j = 0; j < withdrawal.nullifiers.length; j++) {
                 nullifiers[index++] = withdrawal.nullifiers[j];
@@ -195,6 +195,7 @@ contract Challengeable1 is Challengeable {
                 abi.encodePacked(
                     submission.body.withdrawals[i].amount,
                     submission.body.withdrawals[i].to,
+                    submission.body.withdrawals[i].nft,
                     keccak256(abi.encodePacked(submission.body.withdrawals[i].proof))
                 )
             );

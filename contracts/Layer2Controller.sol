@@ -66,7 +66,7 @@ contract Layer2Controller is Coordinatable {
         _connect(challengeable1, IChallengeable(0).challengeNullifierRollUp.selector);
         _connect(challengeable1, IChallengeable(0).challengeWithdrawalRollUp.selector);
         _connect(challengeable2, IChallengeable(0).challengeDepositRoot.selector);
-        _connect(challengeable2, IChallengeable(0).challengeTransferRoot.selector);
+        _connect(challengeable2, IChallengeable(0).challengeL2TxRoot.selector);
         _connect(challengeable2, IChallengeable(0).challengeWithdrawalRoot.selector);
         _connect(challengeable2, IChallengeable(0).challengeMigrationRoot.selector);
         _connect(challengeable2, IChallengeable(0).challengeTotalFee.selector);
