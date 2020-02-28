@@ -4,6 +4,7 @@ include "./nullifier_proof.circom";
 include "./utils.circom";
 include "../../node_modules/circomlib/circuits/eddsaposeidon.circom";
 
+/// TODO: change it just like Mimblewimble
 template ZkTrade(tree_depth, in, out) {
     /** Private Signals for trade */
     signal private input price; /// amount of price should be transfered from the buyer to the seller 

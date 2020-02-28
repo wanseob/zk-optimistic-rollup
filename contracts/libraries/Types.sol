@@ -66,10 +66,13 @@ struct L2Tx {
 
 /** Transactions between the layer 1 and layer 2 */
 struct Deposit {
-    uint256 amount;
+    uint256 value;
     uint256 salt;
     uint[2] pubKey;
+    uint256 token;
+    uint256 amount;
     uint256 nft;
+    // Always nft*amount == 0 
 }
 struct Withdrawal {
     uint8 numberOfInputs;
