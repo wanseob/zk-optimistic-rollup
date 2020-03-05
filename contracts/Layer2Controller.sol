@@ -2,12 +2,15 @@ pragma solidity >= 0.6.0;
 
 import { Coordinatable } from "./controllers/Coordinatable.sol";
 import { SNARKsVerifier } from "./libraries/SNARKs.sol";
-import { TxType, Types } from "./libraries/Types.sol";
 import { Pairing } from "./libraries/Pairing.sol";
 import { IUserInteractable } from "./interfaces/IUserInteractable.sol";
 import { IRollUpable } from "./interfaces/IRollUpable.sol";
 import { IMigratable } from "./interfaces/IMigratable.sol";
-import { IChallengeable } from "./interfaces/IChallengeable.sol";
+import { IDepositChallenge } from "./interfaces/IDepositChallenge.sol";
+import { IHeaderChallenge } from "./interfaces/IHeaderChallenge.sol";
+import { IMigrationChallenge } from "./interfaces/IMigrationChallenge.sol";
+import { IRollUpChallenge } from "./interfaces/IRollUpChallenge.sol";
+import { ITxChallenge } from "./interfaces/ITxChallenge.sol";
 
 
 contract Layer2Controller is Coordinatable {
@@ -58,23 +61,28 @@ contract Layer2Controller is Coordinatable {
     }
 
     function _connectChallengeable(
-        address challengeable1,
-        address challengeable2,
-        address challengeable3
+        address depositChallenge,
+        address headerChallenge,
+        address migrationChallenge,
+        address rollUpChallenge,
+        address txChallenge
     ) internal virtual {
-        _connect(challengeable1, IChallengeable(0).challengeUTXORollUp.selector);
-        _connect(challengeable1, IChallengeable(0).challengeNullifierRollUp.selector);
-        _connect(challengeable1, IChallengeable(0).challengeWithdrawalRollUp.selector);
-        _connect(challengeable2, IChallengeable(0).challengeDepositRoot.selector);
-        _connect(challengeable2, IChallengeable(0).challengeTransferRoot.selector);
-        _connect(challengeable2, IChallengeable(0).challengeWithdrawalRoot.selector);
-        _connect(challengeable2, IChallengeable(0).challengeMigrationRoot.selector);
-        _connect(challengeable2, IChallengeable(0).challengeTotalFee.selector);
-        _connect(challengeable3, IChallengeable(0).challengeInclusion.selector);
-        _connect(challengeable3, IChallengeable(0).challengeTransaction.selector);
-        _connect(challengeable3, IChallengeable(0).challengeUsedNullifier.selector);
-        _connect(challengeable3, IChallengeable(0).challengeDuplicatedNullifier.selector);
-        _connect(challengeable3, IChallengeable(0).isValidRef.selector);
+        _connect(depositChallenge, IDepositChallenge(0).challengeMassDeposit.selector);
+        _connect(headerChallenge, IHeaderChallenge(0).challengeDepositRoot.selector);
+        _connect(headerChallenge, IHeaderChallenge(0).challengeTxRoot.selector);
+        _connect(headerChallenge, IHeaderChallenge(0).challengeMigrationRoot.selector);
+        _connect(headerChallenge, IHeaderChallenge(0).challengeTotalFee.selector);
+        _connect(migrationChallenge, IMigrationChallenge(0).challengeMassMigrationToMassDeposit.selector);
+        _connect(migrationChallenge, IMigrationChallenge(0).challengeERC20Migration.selector);
+        _connect(migrationChallenge, IMigrationChallenge(0).challengeERC721Migration.selector);
+        _connect(rollUpChallenge, IRollUpChallenge(0).challengeUTXORollUp.selector);
+        _connect(rollUpChallenge, IRollUpChallenge(0).challengeNullifierRollUp.selector);
+        _connect(rollUpChallenge, IRollUpChallenge(0).challengeWithdrawalRollUp.selector);
+        _connect(txChallenge, ITxChallenge(0).challengeInclusion.selector);
+        _connect(txChallenge, ITxChallenge(0).challengeTransaction.selector);
+        _connect(txChallenge, ITxChallenge(0).challengeUsedNullifier.selector);
+        _connect(txChallenge, ITxChallenge(0).challengeDuplicatedNullifier.selector);
+        _connect(txChallenge, ITxChallenge(0).isValidRef.selector);
     }
 
     function _connectMigratable(address addr) internal virtual {

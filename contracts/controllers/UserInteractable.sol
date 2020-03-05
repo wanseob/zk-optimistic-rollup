@@ -1,67 +1,51 @@
 pragma solidity >= 0.6.0;
 
 import { Layer2 } from "../storage/Layer2.sol";
-import { Asset, AssetHandler } from "../libraries/Asset.sol";
-import { Hash, Poseidon } from "../libraries/Hash.sol";
+import { IERC20 } from "../utils/IERC20.sol";
+import { IERC721 } from "../utils/IERC721.sol";
+import { Hash, Poseidon, MiMC } from "../libraries/Hash.sol";
 import { RollUpLib } from "../../node_modules/merkle-tree-rollup/contracts/library/RollUpLib.sol";
-import { MassDeposit, Withdrawable, Types } from "../libraries/Types.sol";
-
+import { Withdrawable, Blockchain, Types } from "../libraries/Types.sol";
 
 contract UserInteractable is Layer2 {
+    uint public constant SNARK_FIELD = 21888242871839275222246405745257275088548364400416034343698204186575808495617;
+    uint public constant RANGE_LIMIT = SNARK_FIELD >> 32;
     using RollUpLib for *;
-    using AssetHandler for Asset;
 
-    event Deposit(uint indexed queuedAt, uint note);
+    event Deposit(uint indexed queuedAt, uint note, uint fee);
 
     function deposit(
-        uint note,
-        uint amount,
+        uint eth,
         uint salt,
-        uint fee,
-        uint[2] memory pubKey
+        address token,
+        uint amount,
+        uint nft,
+        uint[2] memory pubKey,
+        uint fee
     ) public payable {
-        ///TODO: limit the length of a queue: 1024
-        require(note != 0, "Note hash can not be zero");
-        ///TODO: require(fee >= specified fee);
-        /// Validate the note is same with the hash result
-        uint[] memory inputs = new uint[](4);
-        inputs[0] = amount;
-        inputs[1] = pubKey[0];
-        inputs[2] = pubKey[1];
-        inputs[3] = salt;
-        require(note == Poseidon.poseidon(inputs), "Invalid hash value");
-        /// Receive token
-        Layer2.asset.depositFrom(address(this), amount + fee);
-        /// Get the mass deposit to update
-        MassDeposit storage latest = chain.depositQueue[chain.depositQueue.length - 1];
-        /// Commit the latest one to prevent accumulating too much (1024)
-        if (!latest.committed && latest.length >= 1024) {
-            latest.committed = true;
-        }
-        MassDeposit storage target = latest.committed ? chain.depositQueue.push() : latest;
-        /// Update the mass deposit
-        target.merged = keccak256(abi.encodePacked(target.merged, note));
-        target.amount += amount;
-        target.fee += fee;
-        target.length += 1;
-        /// Emit event. Coordinator should subscribe this event.
-        emit Deposit(chain.depositQueue.length - 1, note);
+        _deposit(eth, salt, token, amount, nft, pubKey, fee);
     }
 
     function withdraw(
+        uint eth,
+        address token,
         uint amount,
-        bytes32 proofHash,
+        uint nft,
+        uint fee,
         uint rootIndex,
         uint leafIndex,
         uint[] memory siblings
     ) public {
-        _withdraw(amount, msg.sender, proofHash, rootIndex, leafIndex, siblings);
+        _withdraw(msg.sender, eth, token, amount, nft, fee, rootIndex, leafIndex, siblings);
     }
 
     function withdrawUsingSignature(
-        uint amount,
         address to,
-        bytes32 proofHash,
+        uint eth,
+        address token,
+        uint amount,
+        uint nft,
+        uint fee,
         uint rootIndex,
         uint leafIndex,
         uint[] memory siblings,
@@ -69,34 +53,116 @@ contract UserInteractable is Layer2 {
         bytes32 r,
         bytes32 s
     ) public {
-        bytes32 leaf = keccak256(abi.encodePacked(amount, to, proofHash));
+        require(
+            _verifyWithdrawalSignature(to, eth, token, amount, nft, fee, v, r, s),
+            "Invalid signature"
+        );
+        _withdraw(to, eth, token, amount, nft, fee, rootIndex, leafIndex, siblings);
+    }
+
+    function _verifyWithdrawalSignature(
+        address to,
+        uint256 eth,
+        address token,
+        uint256 amount,
+        uint256 nft,
+        uint256 fee,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) internal pure returns (bool) {
+        bytes32 leaf = keccak256(abi.encodePacked(to, eth, token, amount, nft, fee));
         bytes32 prefixedHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", leaf));
         address signer = ecrecover(prefixedHash, v, r, s);
-        require(signer == to, "Invalid signature");
-        _withdraw(amount, to, proofHash, rootIndex, leafIndex, siblings);
+        return signer == to;
+    }
+
+    function _deposit(
+        uint eth,
+        uint salt,
+        address token,
+        uint amount,
+        uint nft,
+        uint[2] memory pubKey,
+        uint fee
+    ) internal {
+        require(msg.value < RANGE_LIMIT, "Too big value can cause the overflow inside the SNARK");
+        require(amount < RANGE_LIMIT, "Too big value can cause the overflow inside the SNARK");
+        require(nft < SNARK_FIELD, "Does not support too big nubmer of nft id");
+        require(amount * nft == 0, "Only one of ERC20 or ERC721 exists");
+        require(eth + fee == msg.value, "Inexact amount of eth");
+        require(Layer2.chain.stagedSize < 1024, "Should wait until it is committed");
+
+        ///TODO: require(fee >= specified fee);
+        /// Validate the note is same with the hash result
+        uint[] memory inputs = new uint[](7);
+        inputs[0] = eth;
+        inputs[1] = pubKey[0];
+        inputs[2] = pubKey[1];
+        inputs[3] = salt;
+        inputs[4] = uint(token);
+        inputs[5] = amount;
+        inputs[6] = nft;
+        uint note = Poseidon.poseidon(inputs);
+        /// Receive token
+        if(amount != 0) {
+            try IERC20(token).transferFrom(msg.sender, address(this), amount) {
+            } catch {
+                revert("Transfer ERC20 failed");
+            }
+        } else {
+            try IERC721(token).transferFrom(msg.sender, address(this), nft) {
+            } catch {
+                revert("Transfer NFT failed");
+            }
+        }
+        /// Update the mass deposit
+        Layer2.chain.stagedDeposits.merged = keccak256(abi.encodePacked(Layer2.chain.stagedDeposits.merged, note));
+        Layer2.chain.stagedDeposits.fee += fee;
+        Layer2.chain.stagedSize += 1;
+        /// Emit event. Coordinator should subscribe this event.
+        emit Deposit(Layer2.chain.massDepositId, note, fee);
     }
 
     function _withdraw(
-        uint amount,
         address to,
-        bytes32 proofHash,
+        uint eth,
+        address token,
+        uint256 amount,
+        uint256 nft,
+        uint256 fee,
         uint rootIndex,
-        uint leafIndex,
+        uint noteIndex,
         uint[] memory siblings
     ) internal {
-        bytes32 leaf = keccak256(abi.encodePacked(amount, to, proofHash));
-        /// Check whether it is already withdrawn or not
-        require(!chain.withdrawn[leaf], "Already withdrawn");
-        /// Get the root of a withdrawable tree to use for the inclusion proof
+        require(nft*amount == 0, "Only ERC20 or ERC721");
+        bytes32 note = keccak256(abi.encodePacked(to, eth, token, amount, nft, fee));
+        /// inclusion proof
         Withdrawable memory withdrawable = chain.withdrawables[rootIndex];
-        /// Calculate the inclusion proof
         bool inclusion = Hash.keccak().merkleProof(
             uint(withdrawable.root),
-            uint(leaf),
-            leafIndex,
+            uint(note),
+            noteIndex,
             siblings
         );
-        require(inclusion, "The given withdrawal leaf does not exist");
-        Layer2.asset.withdrawTo(to, amount);
+        require(inclusion, "The given withdrawal note does not exist");
+        /// Withdraw ETH & get fee
+        if(eth!=0) {
+            if(to == msg.sender) {
+                payable(to).transfer(eth + fee);
+            } else {
+                payable(to).transfer(eth);
+                payable(msg.sender).transfer(fee);
+            }
+        }
+        /// Withdrawn token
+        if(amount!=0) {
+            IERC20(token).transfer(to, amount);
+        } else {
+            IERC721(token).transferFrom(address(this), to, nft);
+        }
+        /// Mark as withdrawn
+        require(!Layer2.chain.withdrawn[note], "Already withdrawn");
+        Layer2.chain.withdrawn[note] = true;
     }
 }

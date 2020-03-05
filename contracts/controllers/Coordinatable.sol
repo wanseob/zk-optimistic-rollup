@@ -1,9 +1,9 @@
 pragma solidity >= 0.6.0;
 
 import { Layer2 } from "../storage/Layer2.sol";
-import { Asset, AssetHandler } from "../libraries/Asset.sol";
 import {
     Proposer,
+    Blockchain,
     Block,
     Proposal,
     Finalization,
@@ -11,11 +11,15 @@ import {
     Withdrawable,
     Types
 } from "../libraries/Types.sol";
+import { Deserializer } from "../libraries/Deserializer.sol";
 
 
 contract Coordinatable is Layer2 {
     using Types for *;
-    using AssetHandler for Asset;
+
+    event NewProposal(bytes32 submissionId);
+    event Finalized(bytes32 submissionId);
+    event MassDepositCommit(uint id, bytes32 merged, uint256 fee);
 
     function register() public payable {
         require(msg.value >= MINIMUM_STAKE, "Should stake more than minimum amount of ETH");
@@ -30,60 +34,67 @@ contract Coordinatable is Layer2 {
         /// Withdraw stake
         proposerAddr.transfer(proposer.stake);
         /// Withdraw reward
-        Layer2.asset.withdrawTo(proposerAddr, proposer.reward);
+        payable(proposerAddr).transfer(proposer.reward);
         /// Delete proposer
         delete Layer2.chain.proposers[proposerAddr];
     }
 
     function propose(bytes memory) public {
-        Block memory submittedBlock = Types.blockFromCalldataAt(0);
+        Block memory _block = Deserializer.blockFromCalldataAt(0);
         /// The message sender address should be same with the proposer address
-        require(submittedBlock.header.proposer == msg.sender, "Coordinator account is different with the message sender");
+        require(_block.header.proposer == msg.sender, "Coordinator account is different with the message sender");
         Proposer storage proposer = Layer2.chain.proposers[msg.sender];
         /// Check permission
         require(isProposable(msg.sender), "Not allowed to propose");
         /// Duplicated proposal is not allowed
-        require(Layer2.chain.proposals[submittedBlock.id].headerHash == bytes32(0), "Already submitted");
+        require(Layer2.chain.proposals[_block.submissionId].headerHash == bytes32(0), "Already submitted");
         /** LEGACY
         /// Do not exceed maximum challenging cost
-        require(submittedBlock.maxChallengeCost() < CHALLENGE_LIMIT, "Its challenge cost exceeds the limit");
+        require(_block.maxChallengeCost() < CHALLENGE_LIMIT, "Its challenge cost exceeds the limit");
         */
         /// Save opru proposal
-        bytes32 currentBlockHash = submittedBlock.header.hash();
-        Layer2.chain.proposals[submittedBlock.id] = Proposal(
+        bytes32 currentBlockHash = _block.header.hash();
+        Layer2.chain.proposals[_block.submissionId] = Proposal(
             currentBlockHash,
             block.number + CHALLENGE_PERIOD,
             false
         );
         /// Record l2 chain
-        Layer2.chain.parentOf[currentBlockHash] = submittedBlock.header.parentBlock;
+        Layer2.chain.parentOf[currentBlockHash] = _block.header.parentBlock;
         /// Record reference for the inclusion proofs
-        Layer2.chain.utxoRootOf[currentBlockHash] = submittedBlock.header.nextUTXORoot;
+        Layer2.chain.utxoRootOf[currentBlockHash] = _block.header.nextUTXORoot;
         /// Update exit allowance period
         proposer.exitAllowance = block.number + CHALLENGE_PERIOD;
         /// Freeze the latest mass deposit for the next block proposer
-        MassDeposit storage latest = Layer2.chain.depositQueue[Layer2.chain.depositQueue.length - 1];
-        if(!latest.committed) {
-            latest.committed = true;
-        }
+        Layer2.chain.committedDeposits[Layer2.chain.stagedDeposits.hash()] += 1;
+        emit MassDepositCommit(
+            Layer2.chain.massDepositId,
+            Layer2.chain.stagedDeposits.merged,
+            Layer2.chain.stagedDeposits.fee
+        );
+        delete Layer2.chain.stagedDeposits;
+        delete Layer2.chain.stagedSize;
+        Layer2.chain.massDepositId++;
+        emit NewProposal(_block.submissionId);
     }
 
     function finalize(bytes memory) public {
-        Finalization memory finalization = Types.finalizationFromCalldataAt(0);
-        Proposal storage proposal = Layer2.chain.proposals[finalization.blockId];
+        Finalization memory finalization = Deserializer.finalizationFromCalldataAt(0);
+        Proposal storage proposal = Layer2.chain.proposals[finalization.submissionId];
         /// Check requirements
-        require(finalization.depositIds.root() == finalization.header.depositRoot, "Submitted different deposit root");
+        require(finalization.massDeposits.root() == finalization.header.depositRoot, "Submitted different deposit root");
+        require(finalization.massMigrations.root() == finalization.header.migrationRoot, "Submitted different deposit root");
         require(finalization.header.hash() == proposal.headerHash, "Invalid header data");
         require(!proposal.slashed, "Slashed roll up can't be finalized");
         require(finalization.header.parentBlock == Layer2.chain.latest, "The latest block should be its parent");
 
         uint totalFee = finalization.header.fee;
         /// Execute deposits and collect fees
-        for (uint i = 0; i < finalization.depositIds.length; i++) {
-            MassDeposit storage deposit = Layer2.chain.depositQueue[finalization.depositIds[i]];
-            require(deposit.committed == true, "Deposit should have committed status");
+        for (uint i = 0; i < finalization.massDeposits.length; i++) {
+            MassDeposit memory deposit = finalization.massDeposits[i];
+            require(chain.committedDeposits[deposit.hash()] > 0, "MassDeposit does not exist.");
             totalFee += deposit.fee;
-            delete Layer2.chain.depositQueue[finalization.depositIds[i]];
+            chain.committedDeposits[deposit.hash()] -= 1;
         }
 
         /// Update withdrawable every finalization
@@ -108,8 +119,15 @@ contract Coordinatable is Layer2 {
 
         /// Record mass migrations and collect fees.
         /// A MassMigration becomes a MassDeposit for the migration destination.
-        for (uint i = 0; i < finalization.migrations.length; i++) {
-            Layer2.chain.migrations.push() = finalization.migrations[i];
+        for (uint i = 0; i < finalization.massMigrations.length; i++) {
+            bytes32 migrationId = keccak256(
+                abi.encodePacked(
+                    finalization.submissionId,
+                    finalization.massMigrations[i].hash()
+                )
+            );
+            require(!Layer2.chain.migrations[migrationId], "Same id exists. Migrate it first");
+            Layer2.chain.migrations[migrationId] = true;
         }
 
         /// Give fee to the proposer
@@ -118,13 +136,14 @@ contract Coordinatable is Layer2 {
 
         /// Update the chain
         Layer2.chain.latest = proposal.headerHash;
+        emit Finalized(finalization.submissionId);
     }
 
     function withdrawReward(uint amount) public {
         address payable proposerAddr = msg.sender;
         Proposer storage proposer = Layer2.chain.proposers[proposerAddr];
         require(proposer.reward >= amount, "You can't withdraw more than you have");
-        Layer2.asset.withdrawTo(proposerAddr, amount);
+        payable(proposerAddr).transfer(amount);
         proposer.reward -= amount;
     }
 

@@ -1,5 +1,6 @@
 include "../../node_modules/circomlib/circuits/poseidon.circom";
 include "../../node_modules/circomlib/circuits/bitify.circom";
+include "../../node_modules/circomlib/circuits/mux1.circom";
 
 template BranchNode() {
     signal input left;
@@ -31,11 +32,22 @@ template InclusionProof(depth) {
     signal nodes[depth + 1];
     component branch_nodes[depth];
     nodes[0] <== leaf;
+    component left[depth];
+    component right[depth];
     for (var level = 0; level < depth; level++) {
         branch_nodes[level] = BranchNode();
         // If the bitified path_bits is 0, the branch node has a left sibling
-        branch_nodes[level].left <-- path_bits.out[level] == 0 ? nodes[level] : siblings[level];
-        branch_nodes[level].right <-- path_bits.out[level] == 0 ? siblings[level] : nodes[level];
+        left[level] = Mux1();
+        left[level].c[0] <== nodes[level];
+        left[level].c[1] <== siblings[level];
+        left[level].s <== path_bits.out[level];
+        right[level] = Mux1();
+        right[level].c[0] <== siblings[level];
+        right[level].c[1] <== nodes[level];
+        right[level].s <== path_bits.out[level];
+
+        branch_nodes[level].left <== left[level].out
+        branch_nodes[level].right <== right[level].out
         nodes[level+1] <== branch_nodes[level].parent;
     }
     nodes[depth] === root;

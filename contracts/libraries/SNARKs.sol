@@ -1,7 +1,7 @@
 pragma solidity >= 0.6.0;
 
 import { Pairing } from "./Pairing.sol";
-
+import { Proof } from "./Types.sol";
 
 library SNARKsVerifier {
     using Pairing for *;
@@ -12,11 +12,7 @@ library SNARKsVerifier {
         Pairing.G2Point delta2;
         Pairing.G1Point[] ic;
     }
-    struct Proof {
-        Pairing.G1Point a;
-        Pairing.G2Point b;
-        Pairing.G1Point c;
-    }
+
     function zkSNARKs(VerifyingKey memory vk, uint[] memory input, Proof memory proof) internal view returns (bool) {
         uint256 SNARK_SCALAR_FIELD = 21888242871839275222246405745257275088548364400416034343698204186575808495617;
         require(input.length + 1 == vk.ic.length,"verifier-bad-input");
@@ -38,20 +34,5 @@ library SNARKsVerifier {
             return true;
         }
         return false;
-    }
-
-    function proof(uint[8] memory proofArr) internal pure returns (Proof memory) {
-        return Proof(
-            Pairing.G1Point(proofArr[0], proofArr[1]),
-            Pairing.G2Point(
-                [
-                    proofArr[2], proofArr[3]
-                ],
-                [
-                    proofArr[4], proofArr[5]
-                ]
-            ),
-            Pairing.G1Point(proofArr[6], proofArr[7])
-        );
     }
 }

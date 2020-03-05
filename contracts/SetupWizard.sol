@@ -4,7 +4,7 @@ import { ISetupWizard } from "./interfaces/ISetupWizard.sol";
 import { Layer2 } from "./storage/Layer2.sol";
 import { Layer2Controller } from "./Layer2Controller.sol";
 import { SNARKsVerifier } from "./libraries/SNARKs.sol";
-import { TxType, Types } from "./libraries/Types.sol";
+import { Types } from "./libraries/Types.sol";
 import { Pairing } from "./libraries/Pairing.sol";
 
 
@@ -12,7 +12,6 @@ contract SetupWizard is Layer2Controller {
     address setupWizard;
 
     constructor(address _setupWizard) public {
-        Layer2.asset.wallet = address(this);
         setupWizard = _setupWizard;
     }
 
@@ -21,12 +20,7 @@ contract SetupWizard is Layer2Controller {
         _;
     }
 
-    function registerERC20(address _erc20) public onlySetupWizard {
-        Layer2.asset.erc20 = _erc20;
-    }
-
     function registerVk(
-        uint8 txType,
         uint8 numOfInputs,
         uint8 numOfOutputs,
         uint[2] memory alfa1,
@@ -35,7 +29,7 @@ contract SetupWizard is Layer2Controller {
         uint[2][2] memory delta2,
         uint[2][] memory ic
     ) public onlySetupWizard {
-        bytes32 txSig = Types.getSNARKsSignature(TxType(txType), numOfInputs, numOfOutputs);
+        bytes32 txSig = Types.getSNARKsSignature(numOfInputs, numOfOutputs);
         SNARKsVerifier.VerifyingKey storage vk = Layer2.vks[txSig];
         vk.alfa1 = Pairing.G1Point(alfa1[0], alfa1[1]);
         vk.beta2 = Pairing.G2Point(beta2[0], beta2[1]);
@@ -55,11 +49,19 @@ contract SetupWizard is Layer2Controller {
     }
 
     function makeChallengeable(
-        address challengeable1,
-        address challengeable2,
-        address challengeable3
+        address depositChallenge,
+        address headerChallenge,
+        address migrationChallenge,
+        address rollUpChallenge,
+        address txChallenge
     ) public onlySetupWizard {
-        Layer2Controller._connectChallengeable(challengeable1, challengeable2, challengeable3);
+        Layer2Controller._connectChallengeable(
+            depositChallenge,
+            headerChallenge,
+            migrationChallenge,
+            rollUpChallenge,
+            txChallenge
+        );
     }
 
     function makeMigratable(address addr) public onlySetupWizard {
@@ -70,6 +72,12 @@ contract SetupWizard is Layer2Controller {
         for (uint i = 0; i < migrants.length; i++) {
             Layer2.allowedMigrants[migrants[i]] = true;
         }
+    }
+
+    function init(bytes32 genesis) internal {
+        Layer2.chain.latest = genesis;
+        Layer2.chain.withdrawables.push(); /// withdrawables[0]: daily snapshot
+        Layer2.chain.withdrawables.push(); /// withdrawables[0]: initial withdrawable tree
     }
 
     function completeSetup() public onlySetupWizard {

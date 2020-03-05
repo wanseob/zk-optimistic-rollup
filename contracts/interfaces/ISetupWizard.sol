@@ -19,11 +19,6 @@ interface ISetupWizard {
     ) external;
 
     /**
-     * @dev It configures the ERC20 to use in this pool
-     */
-    function registerERC20(address _erc20) external;
-
-    /**
      * @dev It connects this proxy contract to the UserInteractable controller.
      */
     function makeUserInteractable(address addr) external;
@@ -37,9 +32,11 @@ interface ISetupWizard {
      * @dev It connects this proxy contract to the Challengeable controllers.
      */
     function makeChallengeable(
-        address challengeable1,
-        address challengeable2,
-        address challengeable3
+        address depositChallenge,
+        address headerChallenge,
+        address migrationChallenge,
+        address rollUpChallenge,
+        address txChallenge
     ) external;
 
     /**
