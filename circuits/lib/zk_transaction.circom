@@ -40,10 +40,9 @@ template ZkTransaction(tree_depth, n_i, n_o) {
     /// preventing double-spending
     signal input inclusion_references[n_i];
     signal input nullifiers[n_i];
-    /// transfer or withdrawal
+    /// UTXO hash
     signal input new_note_hash[n_o];
-    signal input new_note_type[n_o]; // type
-    signal input to_layer1[6][n_o]; // type, to, eth_amount, token_addr, erc20_amount, erc721_id, withdrawal_fee
+    signal input public_data[6][n_o]; // type, to, eth_amount, token_addr, erc20_amount, erc721_id, fee for withdrawal or migration
 
     /** Constraints */
     /// Calculate spending note hash
@@ -107,40 +106,42 @@ template ZkTransaction(tree_depth, n_i, n_o) {
         poseidon_new_note[i].out === new_note_hash[i];
     }
 
-    /// Migration proof.
+
+    /// Public data. "public_data.to == 0" means this note is a UTXO.
+    /// Therefore if then every properties of public data must be zero. 
     component withdrawing_eth[n_o];
     component withdrawing_token_addr[n_o];
     component withdrawing_erc20_amount[n_o];
     component withdrawing_erc721_id[n_o];
     for(var i = 0; i < n_o; i ++) {
         withdrawing_eth[i] = IfElseThen(1);
-        withdrawing_eth[i].obj1[0] <== withdrawal[0][i]; // to
+        withdrawing_eth[i].obj1[0] <== public_data[0][i]; // to
         withdrawing_eth[i].obj2[0] <== 0; // internal transaction
         withdrawing_eth[i].if_v <== 0; // if it is an internal tx, value should be zero
         withdrawing_eth[i].else_v <== new_note[0][i]; // eth amount
 
         withdrawing_token_addr[i] = IfElseThen(1);
-        withdrawing_token_addr[i].obj1[0] <== withdrawal[0][i]; // to
+        withdrawing_token_addr[i].obj1[0] <== public_data[0][i]; // to
         withdrawing_token_addr[i].obj2[0] <== 0; // internal transaction
         withdrawing_token_addr[i].if_v <== 0; // if it is an internal tx, value should be zero
         withdrawing_token_addr[i].else_v <== new_note[4][i]; // token addr
 
         withdrawing_erc20_amount[i] = IfElseThen(1);
-        withdrawing_erc20_amount[i].obj1[0] <== withdrawal[0][i]; // to
+        withdrawing_erc20_amount[i].obj1[0] <== public_data[0][i]; // to
         withdrawing_erc20_amount[i].obj2[0] <== 0; // internal transaction
         withdrawing_erc20_amount[i].if_v <== 0; // if it is an internal tx, value should be zero
         withdrawing_erc20_amount[i].else_v <== new_note[5][i]; // erc20 amount
 
         withdrawing_erc721_id[i] = IfElseThen(1);
-        withdrawing_erc721_id[i].obj1[0] <== withdrawal[0][i]; // to
+        withdrawing_erc721_id[i].obj1[0] <== public_data[0][i]; // to
         withdrawing_erc721_id[i].obj2[0] <== 0; // internal transaction
         withdrawing_erc721_id[i].if_v <== 0; // if it is an internal tx, value should be zero
         withdrawing_erc721_id[i].else_v <== new_note[6][i]; // erc721 id
 
-        withdrawal[1][i] === withdrawing_eth[i].out;
-        withdrawal[2][i] === withdrawing_token_addr[i].out;
-        withdrawal[3][i] === withdrawing_erc20_amount[i].out;
-        withdrawal[4][i] === withdrawing_erc721_id[i].out;
+        public_data[1][i] === withdrawing_eth[i].out;
+        public_data[2][i] === withdrawing_token_addr[i].out;
+        public_data[3][i] === withdrawing_erc20_amount[i].out;
+        public_data[4][i] === withdrawing_erc721_id[i].out;
     }
 
     /// Range limitation to prevent overflow
@@ -182,7 +183,7 @@ template ZkTransaction(tree_depth, n_i, n_o) {
     }
     for ( var i = 0; i < n_o; i++) {
         eth_outflow += new_note[0][i]; // tx fee
-        eth_outflow += withdrawal[5][i]; // withdrawal fee, default = 0
+        eth_outflow += public_data[5][i]; // fee for withdrawal or migration, default = 0
     }
     eth_inflow === eth_outflow;
     
