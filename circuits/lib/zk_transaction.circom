@@ -40,9 +40,9 @@ template ZkTransaction(tree_depth, n_i, n_o) {
     /// preventing double-spending
     signal input inclusion_references[n_i];
     signal input nullifiers[n_i];
-    /// UTXO hash
+    /// UTXO note hash
     signal input new_note_hash[n_o];
-    signal input public_data[6][n_o]; // type, to, eth_amount, token_addr, erc20_amount, erc721_id, fee for withdrawal or migration
+    signal input public_data[6][n_o]; // type, to, eth_amount, token_addr, erc20_amount, erc721_id, fee @ layer1
 
     /** Constraints */
     /// Calculate spending note hash
@@ -106,9 +106,8 @@ template ZkTransaction(tree_depth, n_i, n_o) {
         poseidon_new_note[i].out === new_note_hash[i];
     }
 
-
     /// Public data. "public_data.to == 0" means this note is a UTXO.
-    /// Therefore if then every properties of public data must be zero. 
+    /// Therefore if then every properties of public data must be zero.
     component withdrawing_eth[n_o];
     component withdrawing_token_addr[n_o];
     component withdrawing_erc20_amount[n_o];
@@ -197,18 +196,23 @@ template ZkTransaction(tree_depth, n_i, n_o) {
 
 
     /// Zero sum proof of ERC20
-    component inflow_erc20 = ERC20Sum(n_i);
-    component outflow_erc20 = ERC20Sum(n_o);
-    for ( var i = 0; i < n_i; i++) {
-        inflow_erc20.addr[i] <== spending_note[4][i];
-        inflow_erc20.amount[i] <== spending_note[5][i];
+    component inflow_erc20[n_i];
+    component outflow_erc20[n_i];
+    for (var i = 0; i <n_i; i++) {
+        inflow_erc20[i] = ERC20Sum(n_i);
+        outflow_erc20[i] = ERC20Sum(n_o);
+        inflow_erc20[i].addr <== spending_note[4][i];
+        outflow_erc20[i].addr <== spending_note[4][i];
+        for (var j = 0; j <n_i; j++) {
+            inflow_erc20[i].note_addr[j] <== spending_note[4][j];
+            inflow_erc20[i].note_amount[j] <== spending_note[5][j];
+        }
+        for (var j = 0; j <n_o; j++) {
+            outflow_erc20[i].note_addr[j] <== new_note[4][j];
+            outflow_erc20[i].note_amount[j] <== new_note[5][j];
+        }
+        inflow_erc20[i].out === outflow_erc20[i].out;
     }
-    for ( var i = 0; i < n_o; i++) {
-        outflow_erc20.addr[i] <== new_note[4][i];
-        outflow_erc20.amount[i] <== new_note[5][i];
-    }
-    inflow_erc20.out[0] === outflow_erc20.out[0];
-    inflow_erc20.out[1] === outflow_erc20.out[1];
 
     /// Non fungible proof of ERC721
     component non_fungible = NonFungible(n_i, n_o);
