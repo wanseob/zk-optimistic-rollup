@@ -34,8 +34,8 @@ struct MassDeposit {
 /// needs gas limit
 struct MassMigration {
     address destination;
-    MassDeposit massDeposit;
     uint256 totalETH;
+    MassDeposit massDeposit;
     ERC20Migration[] erc20;
     ERC721Migration[] erc721;
 }

@@ -10,452 +10,220 @@ library Deserializer {
      */
     function blockFromCalldataAt(uint paramIndex) internal pure returns (Block memory) {
         /// 4 means the length of the function signature in the calldata
-        uint startsFrom = 4 + abi.decode(msg.data[4 + 32*paramIndex:4 + 32*(paramIndex+1)], (uint));
-        Header memory header;
-        // uint[] memory massDepositIds;
-        // MassWithdrawal[] memory massWithdrawals;
-        // Transaction[] memory transactions;
-        // L2Tx[] memory l2Txs;
-        // Withdrawal[] memory withdrawals;
-        // Migration[] memory migrations;
+        uint start = 4 + abi.decode(msg.data[4 + 32*paramIndex:4 + 32*(paramIndex+1)], (uint));
+        Block memory _block;
         assembly {
-            /**
-             * @dev It copies `len` of bytes from calldata at `curr_call_cursor` to the memory at `curr_mem_cursor`.
-             * and it returns the next calldata cursor and memory cursor to copy and paste. Note that the basic unit
-             * of the memory cursor is 32bytes while the basit unit of calldata is 1 byte.
-             */
-            function cp_calldata_move(curr_mem_cursor, curr_call_cursor, len) -> new_mem_cursor, new_calldata_cursor {
-                if lt(len, 0x20) { mstore(curr_mem_cursor, 0) } // initialization with zeroes
+            // bytes.length
+            let starting_mem_pos := mload(0x40)
+            let mem_pos := starting_mem_pos
+            calldatacopy(mem_pos, start, 0x20)
+            let data_len := mload(mem_pos)
+            mem_pos := add(mem_pos, 0x20)
+
+            // Header
+            let p_header := mem_pos
+            let cp := add(start, 0x20)
+            let header_len := 0x214 // 0x14 + 16 * 0x20;
+            mstore(p_header, 0) // put zeroes into the first 32bytes
+            calldatacopy(add(p_header, 0x0c), cp, header_len)
+            mem_pos := add(mem_pos, mul(17, 0x20))
+            cp := add(cp, header_len) // skip bytes.length + header.length
+
+            function copy_and_move(curr_mem_cursor, curr_call_cursor) -> new_mem_cursor, new_calldata_cursor {
+                calldatacopy(curr_mem_cursor, curr_call_cursor, 0x20)
+                new_calldata_cursor := add(curr_call_cursor, 0x20)
+                new_mem_cursor := add(curr_mem_cursor, 0x20)
+            }
+            function partial_copy_and_move(curr_mem_cursor, curr_call_cursor, len) -> new_mem_cursor, new_calldata_cursor { 
+                mstore(curr_mem_cursor, 0) // initialization with zeroes
                 calldatacopy(add(curr_mem_cursor, sub(0x20, len)), curr_call_cursor, len)
                 new_calldata_cursor := add(curr_call_cursor, len)
                 new_mem_cursor := add(curr_mem_cursor, 0x20)
             }
-            /**
-             * @dev Assign value to the given memory cursor and and returns the next memory cursor 32bytes behind of it.
-             */
             function assign_and_move(curr_mem_cursor, value) -> new_mem_cursor {
                 mstore(curr_mem_cursor, value)
                 new_mem_cursor := add(curr_mem_cursor, 0x20)
             }
 
-            /// Allocate memory
-            let starting_mem_pos := mload(0x40)
-            let memory_cursor := starting_mem_pos
-            /// Skip 0x04 for signature + 0x20 for calldata length + startsFrom
-            let calldata_cursor := startsFrom
-
-            /** Header */
-            /// Define header ptr
-            header := memory_cursor
-            /// Assign values to the allocated memory
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // parentBlock
-            /// utxo roll up
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // prevUTXORoot
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // prevUTXOIndex
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // nextUTXORoot
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // nextUTXOIndex
-            /// nullifier roll up
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // prevNullifierRoot
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // nextNullifierRoot
-            /// withdrawal roll up
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // prevWithdrawalRoot
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // prevWithdrawalIndex
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // nextWithdrawalRoot
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // nextWithdrawalIndex
-            /// transaction result
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // depositRoot
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // l2TxRoot
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // withdrawalRoot
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // migrationRoot
-            /// Etc
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // fee
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // metadata
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x14) // proposer
-
-            /** Body - deposits*/
-            /// Read the size of the deposit array (maximum 1024)
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x02)
-            let num_of_deposits := mload(sub(memory_cursor, 0x20))
-            /// Allocate memory for the array of deposits
-            // depositIds := memory_cursor
-            /// Set length of the array
-            memory_cursor := assign_and_move(memory_cursor, num_of_deposits)
-            /// Copy deposit ids to the array
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, mul(num_of_deposits, 0x20))
-
-
-            /** Body - L2Txs */
-            // Read the size of the l2Tx array
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x02)
-            let num_of_txs := mload(sub(memory_cursor, 0x20))
-            // Allocate memory for the array of l2Txs
-            // l2Txs := memory_cursor
-            // Set length of the array
-            memory_cursor := assign_and_move(memory_cursor, num_of_txs)
-            // Pointers of each item of the array
-            let tx_pointers := memory_cursor
-            memory_cursor := add(memory_cursor, mul(0x20, num_of_txs))
-            // Assign l2Tx object to the memory address and let the pointer indicate the position
-            for { let i := 0 } lt(i, num_of_txs) { i := add(i, 1) } {
-                // set tx[i]'s ref mem address
-                mstore(add(tx_pointers, mul(0x20, i)), memory_cursor)
-                // Get tx type
-                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x01)
-                // Get number of input
-                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x01)
-                let n_i := mload(sub(memory_cursor, 0x20))
-                // Get number of output
-                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x01)
-                let n_o := mload(sub(memory_cursor, 0x20))
-                // Get tx fee
-                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
-                // inclusion refs
-                memory_cursor := assign_and_move(memory_cursor, add(memory_cursor, 0x20))
-                memory_cursor := assign_and_move(memory_cursor, n_i)
-                for { let j := 0 } lt(j, n_i) { j := add(j, 1) } {
-                    memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
+            // Body
+            let p_txs := mem_pos
+            mem_pos, cp := partial_copy_and_move(mem_pos, cp, 0x02) //txs.len
+            let p_txs_0 := mem_pos
+            // reserve slots for p_tx_i
+            mem_pos := add(mem_pos, mul(mload(p_txs), 0x20))
+            for { let i := 0 } lt(i, mload(p_txs)) { i := add(i, 1) } {
+                /// Get items of Inflow[] array
+                let p_tx_i_inflow := mem_pos
+                mem_pos, cp := partial_copy_and_move(mem_pos, cp, 0x01) // inflow len
+                // reserve slots for p_tx_i_inflow_j
+                mem_pos := add(mem_pos, mul(mload(p_tx_i_inflow), 0x20))
+                for { let j := 0 } lt(j, mload(p_tx_i_inflow)) { j := add(j, 1) } {
+                    // init inflow[j]
+                    mstore(add(add(p_tx_i_inflow, 0x20), mul(0x20, j)), mem_pos)
+                    mem_pos, cp := copy_and_move(mem_pos, cp) // root
+                    mem_pos, cp := copy_and_move(mem_pos, cp) // nullifier
                 }
-                // nullifiers
-                memory_cursor := assign_and_move(memory_cursor, add(memory_cursor, 0x20))
-                memory_cursor := assign_and_move(memory_cursor, n_i)
-                for { let j := 0 } lt(j, n_i) { j := add(j, 1) } {
-                    memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
+                /// Get items of Outflow[] array
+                let p_tx_i_outflow := mem_pos
+                mem_pos, cp := partial_copy_and_move(mem_pos, cp, 0x01) // outflow len
+                // reserve slots for p_tx_i_inflow_j
+                mem_pos := add(mem_pos, mul(mload(p_tx_i_outflow), 0x20))
+                for { let j := 0 } lt(j, mload(p_tx_i_outflow)) { j := add(j, 1) } {
+                    let p_tx_i_outflow_j_note := mem_pos
+                    mem_pos, cp := copy_and_move(mem_pos, cp) // note
+                    mem_pos, cp := partial_copy_and_move(mem_pos, cp, 0x01) // has data
+                    // init outflow[j].publicData
+                    switch mload(sub(mem_pos, 0x20))
+                    case 0
+                    {
+                        mem_pos := assign_and_move(mem_pos, 0)
+                        mem_pos := assign_and_move(mem_pos, 0)
+                        mem_pos := assign_and_move(mem_pos, 0)
+                        mem_pos := assign_and_move(mem_pos, 0)
+                        mem_pos := assign_and_move(mem_pos, 0)
+                        mem_pos := assign_and_move(mem_pos, 0)
+                    }
+                    default
+                    {
+                        mem_pos, cp := partial_copy_and_move(mem_pos, cp, 0x14) // to
+                        mem_pos, cp := copy_and_move(mem_pos, cp) // eth
+                        mem_pos, cp := partial_copy_and_move(mem_pos, cp, 0x14) // token
+                        mem_pos, cp := copy_and_move(mem_pos, cp) // amount
+                        mem_pos, cp := copy_and_move(mem_pos, cp) // nft
+                        mem_pos, cp := copy_and_move(mem_pos, cp) // fee
+                    }
+                    // init outflow[j]
+                    mstore(add(add(p_tx_i_outflow, 0x20), mul(0x20, j)), mem_pos)
+                    mem_pos := assign_and_move(mem_pos, mload(p_tx_i_outflow_j_note))
+                    mem_pos := assign_and_move(mem_pos, mload(add(p_tx_i_outflow_j_note, 0x40)))
                 }
-                // outputs
-                memory_cursor := assign_and_move(memory_cursor, add(memory_cursor, 0x20))
-                memory_cursor := assign_and_move(memory_cursor, n_o)
-                for { let j := 0 } lt(j, n_o) { j := add(j, 1) } {
-                    memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
+                // AtomicSwap
+                let p_tx_i_swap_existence := mem_pos
+                mem_pos, cp := partial_copy_and_move(mem_pos, cp, 0x01) // swap existence
+                let p_tx_i_swap := mem_pos
+                switch mload(p_tx_i_swap_existence)
+                case 0 {
+                        mem_pos := assign_and_move(mem_pos, 0)
+                        mem_pos := assign_and_move(mem_pos, 0)
+                        mem_pos := assign_and_move(mem_pos, 0)
+                        mem_pos := assign_and_move(mem_pos, 0)
                 }
-                // proof
-                memory_cursor := assign_and_move(memory_cursor, add(memory_cursor, 0x20))
-                memory_cursor := assign_and_move(memory_cursor, 8)
-                for { let j := 0 } lt(j, 0x08) { j := add(j, 1) } {
-                    memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
+                default
+                {
+                        mem_pos, cp := copy_and_move(mem_pos, cp) // binder[0]
+                        mem_pos, cp := copy_and_move(mem_pos, cp) // binder[1]
+                        mem_pos, cp := copy_and_move(mem_pos, cp) // counterpart[0]
+                        mem_pos, cp := copy_and_move(mem_pos, cp) // counterpart[1]
                 }
+                // SNARK proof
+                let p_tx_i_proof_a := mem_pos
+                mem_pos, cp := copy_and_move(mem_pos, cp) // a.X
+                mem_pos, cp := copy_and_move(mem_pos, cp) // a.Y
+                let p_tx_i_proof_b := mem_pos
+                mem_pos, cp := copy_and_move(mem_pos, cp) // a.X[0]
+                mem_pos, cp := copy_and_move(mem_pos, cp) // a.X[1]
+                mem_pos, cp := copy_and_move(mem_pos, cp) // b.Y[0]
+                mem_pos, cp := copy_and_move(mem_pos, cp) // b.Y[1]
+                let p_tx_i_proof_c := mem_pos
+                mem_pos, cp := copy_and_move(mem_pos, cp) // c.X
+                mem_pos, cp := copy_and_move(mem_pos, cp) // c.Y
+                // tx[i].proof = Proof(a, b, c)
+                let p_tx_i_proof := mem_pos
+                mem_pos := assign_and_move(mem_pos, p_tx_i_proof_a)
+                mem_pos := assign_and_move(mem_pos, p_tx_i_proof_b)
+                mem_pos := assign_and_move(mem_pos, p_tx_i_proof_c)
+                // tx[i] = Transaction(,,,,)
+                mstore(add(p_txs_0, mul(0x20, i)), mem_pos)
+                mem_pos := assign_and_move(mem_pos, p_tx_i_inflow)
+                mem_pos := assign_and_move(mem_pos, p_tx_i_outflow)
+                mem_pos := assign_and_move(mem_pos, p_tx_i_swap)
+                mem_pos := assign_and_move(mem_pos, p_tx_i_proof)
+                mem_pos, cp := copy_and_move(mem_pos, cp) // copy fee
             }
 
-            /** Body - withdrawals */
-            // Read the size of the withdrawal array
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x02)
-            let num_of_withdrawals := mload(sub(memory_cursor, 0x20))
-            // Allocate memory for the array of withdrawals
-            // withdrawals := memory_cursor
-            // Set length of the array
-            memory_cursor := assign_and_move(memory_cursor, num_of_withdrawals)
-            // Pointers of each item of the array
-            let withdrawal_pointers := memory_cursor
-            memory_cursor := add(memory_cursor, mul(0x20, num_of_withdrawals))
-            // Assign Withdrawal object to the memory address and let the pointer indicate the position
-            for { let i := 0 } lt(i, num_of_withdrawals) { i := add(i, 1) } {
-                // set withdrawals[i]'s ref mem address
-                mstore(add(withdrawal_pointers, mul(0x20, i)), memory_cursor)
-                // Get number of input
-                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x01)
-                let n_i := mload(sub(memory_cursor, 0x20))
-                // Get amount
-                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
-                // Get fee
-                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
-                // Get recipient
-                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x14)
-                // Get nft
-                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
-                // inclusion refs
-                memory_cursor := assign_and_move(memory_cursor, add(memory_cursor, 0x20))
-                memory_cursor := assign_and_move(memory_cursor, n_i)
-                for { let j := 0 } lt(j, n_i) { j := add(j, 1) } {
-                    memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
-                }
-                // nullifiers
-                memory_cursor := assign_and_move(memory_cursor, add(memory_cursor, 0x20))
-                memory_cursor := assign_and_move(memory_cursor, n_i)
-                for { let j := 0 } lt(j, n_i) { j := add(j, 1) } {
-                    memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
-                }
-                // proof
-                memory_cursor := assign_and_move(memory_cursor, add(memory_cursor, 0x20))
-                memory_cursor := assign_and_move(memory_cursor, 8)
-                for { let j := 0 } lt(j, 0x08) { j := add(j, 1) } {
-                    memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
-                }
-            }
-            
-            /** Body - migrations */
-            // Read the size of the migrations array
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x02)
-            let num_of_migrations := mload(sub(memory_cursor, 0x20))
-            // Allocate memory for the array of migrations
-            // migrations := memory_cursor
-            // Set length of the array
-            memory_cursor := assign_and_move(memory_cursor, num_of_migrations)
-            // Pointers of each item of the array
-            let migration_pointers := memory_cursor
-            memory_cursor := add(memory_cursor, mul(0x20, num_of_migrations))
-            // Assign Migration object to the memory address and let the pointer indicate the position
-            for { let i := 0 } lt(i, num_of_migrations) { i := add(i, 1) } {
-                // set migrations[i]'s ref mem address
-                mstore(add(migration_pointers, mul(0x20, i)), memory_cursor)
-                // Get number of input
-                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x01)
-                let n_i := mload(sub(memory_cursor, 0x20))
-                // Get the leaf that is the resulf of poseidon(amount, salt, pubKey[2])
-                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
-                // Get destination
-                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x14)
-                // Get amount
-                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
-                // Get fee
-                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
-                // Get migrationFee
-                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
-                // inclusion refs
-                memory_cursor := assign_and_move(memory_cursor, add(memory_cursor, 0x20))
-                memory_cursor := assign_and_move(memory_cursor, n_i)
-                for { let j := 0 } lt(j, n_i) { j := add(j, 1) } {
-                    memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
-                }
-                // nullifiers
-                memory_cursor := assign_and_move(memory_cursor, add(memory_cursor, 0x20))
-                memory_cursor := assign_and_move(memory_cursor, n_i)
-                for { let j := 0 } lt(j, n_i) { j := add(j, 1) } {
-                    memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
-                }
-                // proof
-                memory_cursor := assign_and_move(memory_cursor, add(memory_cursor, 0x20))
-                memory_cursor := assign_and_move(memory_cursor, 8)
-                for { let j := 0 } lt(j, 0x08) { j := add(j, 1) } {
-                    memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
-                }
+            let p_mass_deposits := mem_pos
+            mem_pos, cp := partial_copy_and_move(mem_pos, cp, 0x02) //massDeposits.len
+            // reserve slots for p_mass_deposit_i
+            mem_pos := add(mem_pos, mul(mload(p_mass_deposits), 0x20))
+            for { let i := 0 } lt(i, mload(p_mass_deposits)) { i := add(i, 1) } {
+                mstore(add(add(p_mass_deposits, 0x20), mul(0x20, i)), mem_pos)
+                mem_pos, cp := copy_and_move(mem_pos, cp) // merged
+                mem_pos, cp := copy_and_move(mem_pos, cp) // fee
             }
 
-            // id := keccak256(starting_mem_pos, sub(memory_cursor, starting_mem_pos))
-            // Deallocate memory
-            mstore(0x40, memory_cursor)
+            let p_mass_migrations := mem_pos
+            mem_pos, cp := partial_copy_and_move(mem_pos, cp, 0x02) //massDeposits.len
+            // reserve slots for p_mass_migration_i
+            mem_pos := add(mem_pos, mul(mload(p_mass_migrations), 0x20))
+            for { let i := 0 } lt(i, mload(p_mass_migrations)) { i := add(i, 1) } {
+                let p_mass_migration_i_dest := mem_pos
+                mem_pos, cp := partial_copy_and_move(mem_pos, cp, 0x14) // dest
+                let p_mass_migration_i_eth := mem_pos
+                mem_pos, cp := copy_and_move(mem_pos, cp) // eth
+                let p_mass_migration_i_mass_deposit := mem_pos
+                mem_pos, cp := copy_and_move(mem_pos, cp) // migration_i_mass_deposit_merged
+                mem_pos, cp := copy_and_move(mem_pos, cp) // migration_i_mass_deposit_fee
+
+
+                /// Get items of ERC20Migration[] array
+                let p_mm_i_erc20 := mem_pos
+                mem_pos, cp := partial_copy_and_move(mem_pos, cp, 0x01) // erc20 migration len
+                let mm_i_erc20_len := mload(p_mm_i_erc20)
+                let p_mm_i_erc20_0 := mem_pos
+                // reserve slots for p_tx_i_inflow_j
+                mem_pos := add(mem_pos, mul(mm_i_erc20_len, 0x20))
+                for { let j := 0 } lt(j, mm_i_erc20_len) { j := add(j, 1) } {
+                    // init ERC20Migration[j]
+                    mstore(add(p_mm_i_erc20_0, mul(0x20, j)), mem_pos)
+                    mem_pos, cp := partial_copy_and_move(mem_pos, cp, 0x14) // token addr
+                    mem_pos, cp := copy_and_move(mem_pos, cp) // amount
+                }
+
+                /// Get items of ERC721Migration[] array
+                let p_mm_i_erc721 := mem_pos
+                mem_pos, cp := partial_copy_and_move(mem_pos, cp, 0x01) // erc721 migration len
+                let mm_i_erc721_len := mload(p_mm_i_erc721)
+                let p_mm_i_erc721_0 := mem_pos
+                // reserve slots for p_tx_i_inflow_j
+                mem_pos := add(mem_pos, mul(mm_i_erc721_len, 0x20))
+                for { let j := 0 } lt(j, mm_i_erc721_len) { j := add(j, 1) } {
+                    // init ERC721Migration[j]
+                    let p_mm_i_erc721_j_addr := mem_pos
+                    mem_pos, cp := partial_copy_and_move(mem_pos, cp, 0x14) // token addr
+                    let p_mm_i_erc721_j_nft := mem_pos
+                    mem_pos, cp := partial_copy_and_move(mem_pos, cp, 0x01) // nft length
+                    for { let k := 0 } lt(k, mload(p_mm_i_erc721_j_nft)) { k := add(k, 1) } {
+                        mem_pos, cp := copy_and_move(mem_pos, cp) // nft[k]
+                    }
+                    mstore(add(p_mm_i_erc721_0, mul(0x20, j)), mem_pos)
+                    mem_pos := assign_and_move(mem_pos, mload(p_mm_i_erc721_j_addr))
+                    mem_pos := assign_and_move(mem_pos, p_mm_i_erc721_j_nft)
+                }
+                mstore(add(add(p_mass_migrations, 0x20), mul(0x20, i)), mem_pos)
+                mem_pos := assign_and_move(mem_pos, mload(p_mass_migration_i_dest))
+                mem_pos := assign_and_move(mem_pos, mload(p_mass_migration_i_eth))
+                mem_pos := assign_and_move(mem_pos, p_mass_migration_i_mass_deposit)
+                mem_pos := assign_and_move(mem_pos, p_mm_i_erc20)
+                mem_pos := assign_and_move(mem_pos, p_mm_i_erc721)
+            }
+            let p_body := mem_pos
+            mem_pos := assign_and_move(mem_pos, p_txs)
+            mem_pos := assign_and_move(mem_pos, p_mass_deposits)
+            mem_pos := assign_and_move(mem_pos, p_mass_migrations)
+            let submission_id := keccak256(starting_mem_pos, sub(mem_pos, starting_mem_pos))
+            _block := mem_pos
+            mem_pos := assign_and_move(mem_pos, submission_id)
+            mem_pos := assign_and_move(mem_pos, p_header)
+            mem_pos := assign_and_move(mem_pos, p_body)
+            mstore(0x40, mem_pos)
+            if not(eq(sub(cp, start), data_len)) {
+                revert(0, 0)
+            }
         }
-        // Body memory body = Body(depositIds, l2Txs, withdrawals, migrations);
-        // return Block(id, header, body);
     }
-
-    /**
-     * @dev Block data will be serialized with the following structure
-     *      https://github.com/wilsonbeam/zk-optimistic-rollup/wiki/Serialization
-     * @param paramIndex The index of the block calldata parameter in the external function
-     */
-    function finalizationFromCalldataAt(uint paramIndex) internal pure returns (Finalization memory) {
-        /// 4 means the length of the function signature in the calldata
-        uint startsFrom = 4 + abi.decode(msg.data[4 + 32*paramIndex : 4 + 32*(paramIndex+1)], (uint));
-        bytes32 blockId;
-        Header memory header;
-        uint[] memory depositIds;
-        MassMigration[] memory migrations;
-        assembly {
-            /**
-             * @dev It copies `len` of bytes from calldata at `curr_call_cursor` to the memory at `curr_mem_cursor`.
-             * and it returns the next calldata cursor and memory cursor to copy and paste. Note that the basic unit
-             * of the memory cursor is 32bytes while the basit unit of calldata is 1 byte.
-             */
-            function cp_calldata_move(curr_mem_cursor, curr_call_cursor, len) -> new_mem_cursor, new_calldata_cursor {
-                if lt(len, 0x20) { mstore(curr_mem_cursor, 0) } // initialization with zeroes
-                calldatacopy(add(curr_mem_cursor, sub(0x20, len)), curr_call_cursor, len)
-                new_calldata_cursor := add(curr_call_cursor, len)
-                new_mem_cursor := add(curr_mem_cursor, 0x20)
-            }
-            /**
-             * @dev Assign value to the given memory cursor and and returns the next memory cursor 32bytes behind of it.
-             */
-            function assign_and_move(curr_mem_cursor, value) -> new_mem_cursor {
-                mstore(curr_mem_cursor, value)
-                new_mem_cursor := add(curr_mem_cursor, 0x20)
-            }
-
-            /// Allocate memory
-            let starting_mem_pos := mload(0x40)
-            let memory_cursor := starting_mem_pos
-            let calldata_cursor := startsFrom
-            /** Get blockId */
-            blockId := memory_cursor
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // blockId
-
-            /** Header */
-            /// Define header ptr
-            header := memory_cursor
-            /// Assign values to the allocated memory
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // parentBlock
-            /// utxo roll up
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // prevUTXORoot
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // prevUTXOIndex
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // nextUTXORoot
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // nextUTXOIndex
-            /// nullifier roll up
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // prevNullifierRoot
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // nextNullifierRoot
-            /// withdrawal roll up
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // prevWithdrawalRoot
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // prevWithdrawalIndex
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // nextWithdrawalRoot
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // nextWithdrawalIndex
-            /// transaction result
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // depositRoot
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // l2TxRoot
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // withdrawalRoot
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // fee
-            /// Other metadata
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x14) // proposer
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // metadata
-
-            /** Get depositIds */
-            /// Read the size of the deposit array (maximum 1024)
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x02)
-            let num_of_deposits := mload(sub(memory_cursor, 0x20))
-            /// Allocate memory for the array of deposits
-            depositIds := memory_cursor
-            /// Set length of the array
-            memory_cursor := assign_and_move(memory_cursor, num_of_deposits)
-            /// Copy deposit ids to the array
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, mul(num_of_deposits, 0x20))
-
-            /** Get mass migrations */
-            // Read the size of the migrations array
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x02)
-            let num_of_migrations := mload(sub(memory_cursor, 0x20))
-            // Allocate memory for the array of migrations
-            migrations := memory_cursor
-            // Set length of the array
-            memory_cursor := assign_and_move(memory_cursor, num_of_migrations)
-            // Pointers of each item of the array
-            let migration_pointers := memory_cursor
-            memory_cursor := add(memory_cursor, mul(0x20, num_of_migrations))
-            // Assign MassMigration object to the memory address and let the pointer indicate the position
-            for { let i := 0 } lt(i, num_of_migrations) { i := add(i, 1) } {
-                // set migrations[i]'s ref mem address
-                mstore(add(migration_pointers, mul(0x20, i)), memory_cursor)
-                // Get destination
-                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x14)
-                // Get amount
-                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
-                // Get migrationFee
-                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
-                // Get mergedLeaves
-                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
-                // Get number of total merged leaves
-                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
-            }
-
-            /// Deallocate memory
-            mstore(0x40, memory_cursor)
-        }
-        // return Finalization(blockId, header, depositIds, migrations);
-    }
-
-    /**
-     * @dev Block data will be serialized with the following structure
-     *      https://github.com/wilsonbeam/zk-optimistic-rollup/wiki/Serialization
-     * @param paramIndex The index of the block calldata parameter in the external function
-     */
+    
     function massMigrationFromCalldataAt(uint paramIndex) internal pure returns (MassMigration memory) {
-        /// 4 means the length of the function signature in the calldata
-        uint startsFrom = 4 + abi.decode(msg.data[4 + 32*paramIndex : 4 + 32*(paramIndex+1)], (uint));
-        bytes32 blockId;
-        Header memory header;
-        uint[] memory depositIds;
-        MassMigration[] memory migrations;
-        assembly {
-            /**
-             * @dev It copies `len` of bytes from calldata at `curr_call_cursor` to the memory at `curr_mem_cursor`.
-             * and it returns the next calldata cursor and memory cursor to copy and paste. Note that the basic unit
-             * of the memory cursor is 32bytes while the basit unit of calldata is 1 byte.
-             */
-            function cp_calldata_move(curr_mem_cursor, curr_call_cursor, len) -> new_mem_cursor, new_calldata_cursor {
-                if lt(len, 0x20) { mstore(curr_mem_cursor, 0) } // initialization with zeroes
-                calldatacopy(add(curr_mem_cursor, sub(0x20, len)), curr_call_cursor, len)
-                new_calldata_cursor := add(curr_call_cursor, len)
-                new_mem_cursor := add(curr_mem_cursor, 0x20)
-            }
-            /**
-             * @dev Assign value to the given memory cursor and and returns the next memory cursor 32bytes behind of it.
-             */
-            function assign_and_move(curr_mem_cursor, value) -> new_mem_cursor {
-                mstore(curr_mem_cursor, value)
-                new_mem_cursor := add(curr_mem_cursor, 0x20)
-            }
-
-            /// Allocate memory
-            let starting_mem_pos := mload(0x40)
-            let memory_cursor := starting_mem_pos
-            let calldata_cursor := startsFrom
-            /** Get blockId */
-            blockId := memory_cursor
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // blockId
-
-            /** Header */
-            /// Define header ptr
-            header := memory_cursor
-            /// Assign values to the allocated memory
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // parentBlock
-            /// utxo roll up
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // prevUTXORoot
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // prevUTXOIndex
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // nextUTXORoot
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // nextUTXOIndex
-            /// nullifier roll up
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // prevNullifierRoot
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // nextNullifierRoot
-            /// withdrawal roll up
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // prevWithdrawalRoot
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // prevWithdrawalIndex
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // nextWithdrawalRoot
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // nextWithdrawalIndex
-            /// transaction result
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // depositRoot
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // l2TxRoot
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // withdrawalRoot
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // fee
-            /// Other metadata
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x14) // proposer
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20) // metadata
-
-            /** Get depositIds */
-            /// Read the size of the deposit array (maximum 1024)
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x02)
-            let num_of_deposits := mload(sub(memory_cursor, 0x20))
-            /// Allocate memory for the array of deposits
-            depositIds := memory_cursor
-            /// Set length of the array
-            memory_cursor := assign_and_move(memory_cursor, num_of_deposits)
-            /// Copy deposit ids to the array
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, mul(num_of_deposits, 0x20))
-
-            /** Get mass migrations */
-            // Read the size of the migrations array
-            memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x02)
-            let num_of_migrations := mload(sub(memory_cursor, 0x20))
-            // Allocate memory for the array of migrations
-            migrations := memory_cursor
-            // Set length of the array
-            memory_cursor := assign_and_move(memory_cursor, num_of_migrations)
-            // Pointers of each item of the array
-            let migration_pointers := memory_cursor
-            memory_cursor := add(memory_cursor, mul(0x20, num_of_migrations))
-            // Assign MassMigration object to the memory address and let the pointer indicate the position
-            for { let i := 0 } lt(i, num_of_migrations) { i := add(i, 1) } {
-                // set migrations[i]'s ref mem address
-                mstore(add(migration_pointers, mul(0x20, i)), memory_cursor)
-                // Get destination
-                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x14)
-                // Get amount
-                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
-                // Get migrationFee
-                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
-                // Get mergedLeaves
-                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
-                // Get number of total merged leaves
-                memory_cursor, calldata_cursor := cp_calldata_move(memory_cursor, calldata_cursor, 0x20)
-            }
-
-            /// Deallocate memory
-            mstore(0x40, memory_cursor)
-        }
-        // return Finalization(blockId, header, depositIds, migrations);
+    }
+    function finalizationFromCalldataAt(uint paramIndex) internal pure returns (Finalization memory) {
     }
 }
