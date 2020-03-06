@@ -48,27 +48,33 @@ library Deserializer {
             // Body
             let p_txs := mem_pos
             mem_pos, cp := partial_copy_and_move(mem_pos, cp, 0x02) //txs.len
+            let txs_len := mload(p_txs)
             let p_txs_0 := mem_pos
             // reserve slots for p_tx_i
-            mem_pos := add(mem_pos, mul(mload(p_txs), 0x20))
-            for { let i := 0 } lt(i, mload(p_txs)) { i := add(i, 1) } {
+            mem_pos := add(mem_pos, mul(txs_len, 0x20))
+            for { let i := 0 } lt(i, txs_len) { i := add(i, 1) } {
                 /// Get items of Inflow[] array
                 let p_tx_i_inflow := mem_pos
                 mem_pos, cp := partial_copy_and_move(mem_pos, cp, 0x01) // inflow len
+                let inflow_len := mload(p_tx_i_inflow)
+                let p_tx_i_inflow_0 := mem_pos
                 // reserve slots for p_tx_i_inflow_j
-                mem_pos := add(mem_pos, mul(mload(p_tx_i_inflow), 0x20))
-                for { let j := 0 } lt(j, mload(p_tx_i_inflow)) { j := add(j, 1) } {
+                mem_pos := add(mem_pos, mul(inflow_len, 0x20))
+                for { let j := 0 } lt(j, inflow_len) { j := add(j, 1) } {
                     // init inflow[j]
-                    mstore(add(add(p_tx_i_inflow, 0x20), mul(0x20, j)), mem_pos)
+                    let p_tx_i_inflow_j := mem_pos
                     mem_pos, cp := copy_and_move(mem_pos, cp) // root
                     mem_pos, cp := copy_and_move(mem_pos, cp) // nullifier
+                    mstore(add(p_tx_i_inflow_0, mul(0x20, j)), p_tx_i_inflow_j)
                 }
                 /// Get items of Outflow[] array
                 let p_tx_i_outflow := mem_pos
                 mem_pos, cp := partial_copy_and_move(mem_pos, cp, 0x01) // outflow len
+                let outflow_len := mload(p_tx_i_outflow)
+                let p_tx_i_outflow_0 := mem_pos
                 // reserve slots for p_tx_i_inflow_j
-                mem_pos := add(mem_pos, mul(mload(p_tx_i_outflow), 0x20))
-                for { let j := 0 } lt(j, mload(p_tx_i_outflow)) { j := add(j, 1) } {
+                mem_pos := add(mem_pos, mul(outflow_len, 0x20))
+                for { let j := 0 } lt(j, outflow_len) { j := add(j, 1) } {
                     let p_tx_i_outflow_j_note := mem_pos
                     mem_pos, cp := copy_and_move(mem_pos, cp) // note
                     mem_pos, cp := partial_copy_and_move(mem_pos, cp, 0x01) // has data
@@ -93,9 +99,10 @@ library Deserializer {
                         mem_pos, cp := copy_and_move(mem_pos, cp) // fee
                     }
                     // init outflow[j]
-                    mstore(add(add(p_tx_i_outflow, 0x20), mul(0x20, j)), mem_pos)
+                    let p_tx_i_outflow_j := mem_pos
                     mem_pos := assign_and_move(mem_pos, mload(p_tx_i_outflow_j_note))
                     mem_pos := assign_and_move(mem_pos, mload(add(p_tx_i_outflow_j_note, 0x40)))
+                    mstore(add(p_tx_i_outflow_0, mul(0x20, j)), p_tx_i_outflow_j)
                 }
                 // AtomicSwap
                 let p_tx_i_swap_existence := mem_pos
@@ -133,29 +140,35 @@ library Deserializer {
                 mem_pos := assign_and_move(mem_pos, p_tx_i_proof_b)
                 mem_pos := assign_and_move(mem_pos, p_tx_i_proof_c)
                 // tx[i] = Transaction(,,,,)
-                mstore(add(p_txs_0, mul(0x20, i)), mem_pos)
+                let p_tx_i := mem_pos
                 mem_pos := assign_and_move(mem_pos, p_tx_i_inflow)
                 mem_pos := assign_and_move(mem_pos, p_tx_i_outflow)
                 mem_pos := assign_and_move(mem_pos, p_tx_i_swap)
                 mem_pos := assign_and_move(mem_pos, p_tx_i_proof)
                 mem_pos, cp := copy_and_move(mem_pos, cp) // copy fee
+                mstore(add(p_txs_0, mul(0x20, i)), p_tx_i)
             }
 
             let p_mass_deposits := mem_pos
             mem_pos, cp := partial_copy_and_move(mem_pos, cp, 0x02) //massDeposits.len
+            let mass_deposits_len := mload(p_mass_deposits)
+            let p_mass_deposit_0 := mem_pos
             // reserve slots for p_mass_deposit_i
-            mem_pos := add(mem_pos, mul(mload(p_mass_deposits), 0x20))
-            for { let i := 0 } lt(i, mload(p_mass_deposits)) { i := add(i, 1) } {
-                mstore(add(add(p_mass_deposits, 0x20), mul(0x20, i)), mem_pos)
+            mem_pos := add(mem_pos, mul(mass_deposits_len, 0x20))
+            for { let i := 0 } lt(i, mass_deposits_len) { i := add(i, 1) } {
+                let p_mass_deposit_i := mem_pos
                 mem_pos, cp := copy_and_move(mem_pos, cp) // merged
                 mem_pos, cp := copy_and_move(mem_pos, cp) // fee
+                mstore(add(p_mass_deposit_0, mul(0x20, i)), p_mass_deposit_i)
             }
 
             let p_mass_migrations := mem_pos
             mem_pos, cp := partial_copy_and_move(mem_pos, cp, 0x02) //massDeposits.len
+            let mass_migrations_len := mload(p_mass_migrations)
+            let p_mass_migration_0 := mem_pos
             // reserve slots for p_mass_migration_i
-            mem_pos := add(mem_pos, mul(mload(p_mass_migrations), 0x20))
-            for { let i := 0 } lt(i, mload(p_mass_migrations)) { i := add(i, 1) } {
+            mem_pos := add(mem_pos, mul(mass_migrations_len, 0x20))
+            for { let i := 0 } lt(i, mass_migrations_len) { i := add(i, 1) } {
                 let p_mass_migration_i_dest := mem_pos
                 mem_pos, cp := partial_copy_and_move(mem_pos, cp, 0x14) // dest
                 let p_mass_migration_i_eth := mem_pos
@@ -174,9 +187,10 @@ library Deserializer {
                 mem_pos := add(mem_pos, mul(mm_i_erc20_len, 0x20))
                 for { let j := 0 } lt(j, mm_i_erc20_len) { j := add(j, 1) } {
                     // init ERC20Migration[j]
-                    mstore(add(p_mm_i_erc20_0, mul(0x20, j)), mem_pos)
+                    let p_mm_i_erc20_j := mem_pos
                     mem_pos, cp := partial_copy_and_move(mem_pos, cp, 0x14) // token addr
                     mem_pos, cp := copy_and_move(mem_pos, cp) // amount
+                    mstore(add(p_mm_i_erc20_0, mul(0x20, j)), p_mm_i_erc20_j)
                 }
 
                 /// Get items of ERC721Migration[] array
@@ -195,16 +209,18 @@ library Deserializer {
                     for { let k := 0 } lt(k, mload(p_mm_i_erc721_j_nft)) { k := add(k, 1) } {
                         mem_pos, cp := copy_and_move(mem_pos, cp) // nft[k]
                     }
-                    mstore(add(p_mm_i_erc721_0, mul(0x20, j)), mem_pos)
+                    let p_mm_i_erc721_j := mem_pos
                     mem_pos := assign_and_move(mem_pos, mload(p_mm_i_erc721_j_addr))
                     mem_pos := assign_and_move(mem_pos, p_mm_i_erc721_j_nft)
+                    mstore(add(p_mm_i_erc721_0, mul(0x20, j)), p_mm_i_erc721_j)
                 }
-                mstore(add(add(p_mass_migrations, 0x20), mul(0x20, i)), mem_pos)
+                let p_mass_migration_i := mem_pos
                 mem_pos := assign_and_move(mem_pos, mload(p_mass_migration_i_dest))
                 mem_pos := assign_and_move(mem_pos, mload(p_mass_migration_i_eth))
                 mem_pos := assign_and_move(mem_pos, p_mass_migration_i_mass_deposit)
                 mem_pos := assign_and_move(mem_pos, p_mm_i_erc20)
                 mem_pos := assign_and_move(mem_pos, p_mm_i_erc721)
+                mstore(add(p_mass_migration_0, mul(0x20, i)), p_mass_migration_i)
             }
             let p_body := mem_pos
             mem_pos := assign_and_move(mem_pos, p_txs)
@@ -220,6 +236,7 @@ library Deserializer {
                 revert(0, 0)
             }
         }
+        return _block;
     }
     
     function massMigrationFromCalldataAt(uint paramIndex) internal pure returns (MassMigration memory) {
