@@ -12,23 +12,8 @@ library Deserializer {
         /// 4 means the length of the function signature in the calldata
         uint start = 4 + abi.decode(msg.data[4 + 32*paramIndex:4 + 32*(paramIndex+1)], (uint));
         Block memory _block;
+        Transaction memory txs;
         assembly {
-            // bytes.length
-            let starting_mem_pos := mload(0x40)
-            let mem_pos := starting_mem_pos
-            calldatacopy(mem_pos, start, 0x20)
-            let data_len := mload(mem_pos)
-            mem_pos := add(mem_pos, 0x20)
-
-            // Header
-            let p_header := mem_pos
-            let cp := add(start, 0x20)
-            let header_len := 0x214 // 0x14 + 16 * 0x20;
-            mstore(p_header, 0) // put zeroes into the first 32bytes
-            calldatacopy(add(p_header, 0x0c), cp, header_len)
-            mem_pos := add(mem_pos, mul(17, 0x20))
-            cp := add(cp, header_len) // skip bytes.length + header.length
-
             function copy_and_move(curr_mem_cursor, curr_call_cursor) -> new_mem_cursor, new_calldata_cursor {
                 calldatacopy(curr_mem_cursor, curr_call_cursor, 0x20)
                 new_calldata_cursor := add(curr_call_cursor, 0x20)
@@ -44,39 +29,65 @@ library Deserializer {
                 mstore(curr_mem_cursor, value)
                 new_mem_cursor := add(curr_mem_cursor, 0x20)
             }
+            function skip(mem_pos, n) -> new_mem_pos {
+                new_mem_pos := add(mem_pos, mul(0x20, n))
+            }
+
+            // bytes.length
+            let starting_mem_pos := mload(0x40)
+            let mem_pos := starting_mem_pos
+            let cp := start
+            mem_pos, cp := copy_and_move(mem_pos, cp)
+            let data_len := mload(starting_mem_pos)
+            let _
+
+            // Block memory _block;
+            _block := mem_pos
+            mem_pos := skip(mem_pos, 3) // id, header, body
+
+            // Header
+            mstore(add(_block, 0x20), mem_pos) // Block.header
+            mstore(mem_pos, 0) // put zeroes into the first 32bytes
+            calldatacopy(add(mem_pos, 0x0c), cp, 0x214) // header_len := 0x214 = 0x14 + 16 * 0x20;
+            mem_pos := skip(mem_pos, 17)
+            cp := add(cp, 0x214) // skip bytes.length + header.length
 
             // Body
-            let p_txs := mem_pos
+            mstore(add(_block, 0x40), mem_pos) // Block.body
+            txs := mem_pos
             mem_pos, cp := partial_copy_and_move(mem_pos, cp, 0x02) //txs.len
-            let txs_len := mload(p_txs)
-            let p_txs_0 := mem_pos
-            // reserve slots for p_tx_i
-            mem_pos := add(mem_pos, mul(txs_len, 0x20))
-            for { let i := 0 } lt(i, txs_len) { i := add(i, 1) } {
+            mem_pos := skip(mem_pos, mload(txs))
+            // reserve slots for p_txs_i
+            for { let i := 0 } lt(i, mload(txs)) { i := add(i, 1) } {
+                let p_txs_i := mem_pos
+                mstore(add(txs, mul(0x20, add(i, 1))), p_txs_i) // init txs[i]
+                mem_pos := skip(mem_pos, 5)
+
                 /// Get items of Inflow[] array
-                let p_tx_i_inflow := mem_pos
+                mstore(p_txs_i, mem_pos)// init txs[i].inflow
                 mem_pos, cp := partial_copy_and_move(mem_pos, cp, 0x01) // inflow len
-                let inflow_len := mload(p_tx_i_inflow)
-                let p_tx_i_inflow_0 := mem_pos
-                // reserve slots for p_tx_i_inflow_j
-                mem_pos := add(mem_pos, mul(inflow_len, 0x20))
+                let inflow_len := mload(sub(mem_pos, 0x20))
+                let p_txs_i_inflow_j := mem_pos
+                // reserve slots for p_txs_i_inflow_j
+                mem_pos := skip(mem_pos, inflow_len)
                 for { let j := 0 } lt(j, inflow_len) { j := add(j, 1) } {
                     // init inflow[j]
-                    let p_tx_i_inflow_j := mem_pos
+                    mstore(p_txs_i_inflow_j, mem_pos)
+                    p_txs_i_inflow_j := add(p_txs_i_inflow_j, 0x20)
                     mem_pos, cp := copy_and_move(mem_pos, cp) // root
                     mem_pos, cp := copy_and_move(mem_pos, cp) // nullifier
-                    mstore(add(p_tx_i_inflow_0, mul(0x20, j)), p_tx_i_inflow_j)
                 }
                 /// Get items of Outflow[] array
-                let p_tx_i_outflow := mem_pos
+                mstore(add(p_txs_i, 0x20), mem_pos)// init txs[i].outflow
                 mem_pos, cp := partial_copy_and_move(mem_pos, cp, 0x01) // outflow len
-                let outflow_len := mload(p_tx_i_outflow)
-                let p_tx_i_outflow_0 := mem_pos
-                // reserve slots for p_tx_i_inflow_j
-                mem_pos := add(mem_pos, mul(outflow_len, 0x20))
+                let outflow_len := mload(sub(mem_pos, 0x20))
+                let p_txs_i_outflow_j := mem_pos
+                // reserve slots for p_txs_i_outflow_j
+                mem_pos := skip(mem_pos, outflow_len)
                 for { let j := 0 } lt(j, outflow_len) { j := add(j, 1) } {
-                    let p_tx_i_outflow_j_note := mem_pos
+                    mstore(p_txs_i_outflow_j, mem_pos)
                     mem_pos, cp := copy_and_move(mem_pos, cp) // note
+                    mstore(mem_pos, add(mem_pos, 0x40)) // public data
                     mem_pos, cp := partial_copy_and_move(mem_pos, cp, 0x01) // has data
                     // init outflow[j].publicData
                     switch mload(sub(mem_pos, 0x20))
@@ -98,57 +109,47 @@ library Deserializer {
                         mem_pos, cp := copy_and_move(mem_pos, cp) // nft
                         mem_pos, cp := copy_and_move(mem_pos, cp) // fee
                     }
-                    // init outflow[j]
-                    let p_tx_i_outflow_j := mem_pos
-                    mem_pos := assign_and_move(mem_pos, mload(p_tx_i_outflow_j_note))
-                    mem_pos := assign_and_move(mem_pos, mload(add(p_tx_i_outflow_j_note, 0x40)))
-                    mstore(add(p_tx_i_outflow_0, mul(0x20, j)), p_tx_i_outflow_j)
+                    p_txs_i_outflow_j := add(p_txs_i_outflow_j, 0x20)
                 }
                 // AtomicSwap
-                let p_tx_i_swap_existence := mem_pos
-                mem_pos, cp := partial_copy_and_move(mem_pos, cp, 0x01) // swap existence
-                let p_tx_i_swap := mem_pos
-                switch mload(p_tx_i_swap_existence)
+                _, cp := partial_copy_and_move(mem_pos, cp, 0x01) // swap existence
+                switch mload(mem_pos)
                 case 0 {
-                        mem_pos := assign_and_move(mem_pos, 0)
-                        mem_pos := assign_and_move(mem_pos, 0)
-                        mem_pos := assign_and_move(mem_pos, 0)
-                        mem_pos := assign_and_move(mem_pos, 0)
+                    mstore(add(p_txs_i, 0x40), 0)// txs[i].swap = 0
                 }
                 default
                 {
-                        mem_pos, cp := copy_and_move(mem_pos, cp) // binder[0]
-                        mem_pos, cp := copy_and_move(mem_pos, cp) // binder[1]
-                        mem_pos, cp := copy_and_move(mem_pos, cp) // counterpart[0]
-                        mem_pos, cp := copy_and_move(mem_pos, cp) // counterpart[1]
+                    _, cp := copy_and_move(mem_pos, cp)
+                    mstore(add(p_txs_i, 0x40), mload(mem_pos))// txs[i].swap = copied
+                    mem_pos := add(mem_pos, 0x20)
                 }
+                //  Fee
+                _, cp := copy_and_move(mem_pos, cp)
+                mstore(add(p_txs_i, 0x60), mload(mem_pos))// txs[i].fee
+                mem_pos := add(mem_pos, 0x20)
                 // SNARK proof
-                let p_tx_i_proof_a := mem_pos
+                let p_tx_proof := mem_pos
+                mstore(add(p_txs_i, 0x80), p_tx_proof)// init txs[i].outflow
+                mem_pos := skip(mem_pos, 3)
+                mstore(p_tx_proof, mem_pos) // proof.a
                 mem_pos, cp := copy_and_move(mem_pos, cp) // a.X
                 mem_pos, cp := copy_and_move(mem_pos, cp) // a.Y
-                let p_tx_i_proof_b := mem_pos
+                mstore(add(p_tx_proof, 0x20), mem_pos) // proof.b
                 mem_pos, cp := copy_and_move(mem_pos, cp) // a.X[0]
                 mem_pos, cp := copy_and_move(mem_pos, cp) // a.X[1]
                 mem_pos, cp := copy_and_move(mem_pos, cp) // b.Y[0]
                 mem_pos, cp := copy_and_move(mem_pos, cp) // b.Y[1]
-                let p_tx_i_proof_c := mem_pos
+                mstore(add(p_tx_proof, 0x60), mem_pos) // proof.c
                 mem_pos, cp := copy_and_move(mem_pos, cp) // c.X
                 mem_pos, cp := copy_and_move(mem_pos, cp) // c.Y
-                // tx[i].proof = Proof(a, b, c)
-                let p_tx_i_proof := mem_pos
-                mem_pos := assign_and_move(mem_pos, p_tx_i_proof_a)
-                mem_pos := assign_and_move(mem_pos, p_tx_i_proof_b)
-                mem_pos := assign_and_move(mem_pos, p_tx_i_proof_c)
-                // tx[i] = Transaction(,,,,)
-                let p_tx_i := mem_pos
-                mem_pos := assign_and_move(mem_pos, p_tx_i_inflow)
-                mem_pos := assign_and_move(mem_pos, p_tx_i_outflow)
-                mem_pos := assign_and_move(mem_pos, p_tx_i_swap)
-                mem_pos := assign_and_move(mem_pos, p_tx_i_proof)
-                mem_pos, cp := copy_and_move(mem_pos, cp) // copy fee
-                mstore(add(p_txs_0, mul(0x20, i)), p_tx_i)
+                // Memo
+                _, cp := partial_copy_and_move(mem_pos, cp, 0x01) //txs.len
+                let memo_len := mload(mem_pos)
+                mem_pos := add(mem_pos, 0x20)
+                calldatacopy(mem_pos, cp, memo_len)
+                mem_pos := skip(mem_pos, memo_len)
             }
-
+            /**
             let p_mass_deposits := mem_pos
             mem_pos, cp := partial_copy_and_move(mem_pos, cp, 0x02) //massDeposits.len
             let mass_deposits_len := mload(p_mass_deposits)
@@ -183,7 +184,7 @@ library Deserializer {
                 mem_pos, cp := partial_copy_and_move(mem_pos, cp, 0x01) // erc20 migration len
                 let mm_i_erc20_len := mload(p_mm_i_erc20)
                 let p_mm_i_erc20_0 := mem_pos
-                // reserve slots for p_tx_i_inflow_j
+                // reserve slots for p_txs_i_inflow_j
                 mem_pos := add(mem_pos, mul(mm_i_erc20_len, 0x20))
                 for { let j := 0 } lt(j, mm_i_erc20_len) { j := add(j, 1) } {
                     // init ERC20Migration[j]
@@ -198,7 +199,7 @@ library Deserializer {
                 mem_pos, cp := partial_copy_and_move(mem_pos, cp, 0x01) // erc721 migration len
                 let mm_i_erc721_len := mload(p_mm_i_erc721)
                 let p_mm_i_erc721_0 := mem_pos
-                // reserve slots for p_tx_i_inflow_j
+                // reserve slots for p_txs_i_inflow_j
                 mem_pos := add(mem_pos, mul(mm_i_erc721_len, 0x20))
                 for { let j := 0 } lt(j, mm_i_erc721_len) { j := add(j, 1) } {
                     // init ERC721Migration[j]
@@ -234,7 +235,8 @@ library Deserializer {
             mstore(0x40, mem_pos)
             if not(eq(sub(cp, start), data_len)) {
                 revert(0, 0)
-            }
+            } 
+            */
         }
         return _block;
     }

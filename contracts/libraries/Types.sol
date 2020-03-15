@@ -126,9 +126,10 @@ struct Body {
 struct Transaction {
     Inflow[] inflow;
     Outflow[] outflow;
-    AtomicSwap swap;
-    Proof proof;
+    uint256 swap;
     uint256 fee;
+    Proof proof;
+    bytes memo; // encrypted memo field
 }
 
 struct Inflow {
@@ -207,7 +208,7 @@ library Types {
             abi.encodePacked(
                 toBytes(transaction.inflow),
                 toBytes(transaction.outflow),
-                toBytes(transaction.swap),
+                transaction.swap,
                 toBytes(transaction.proof),
                 transaction.fee
             )

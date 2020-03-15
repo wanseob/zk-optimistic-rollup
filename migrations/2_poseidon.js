@@ -34,7 +34,7 @@ module.exports = function(deployer) {
       .save({
         contractName: poseidonContractName,
         abi: poseidonGenContract.abi,
-        unlinked_binary: poseidonGenContract.createCode(SEED, 220)
+        unlinked_binary: poseidonGenContract.createCode(6, 8, 57, SEED)
       })
       .then(async () => {
         const Poseidon = artifacts.require(poseidonContractName);

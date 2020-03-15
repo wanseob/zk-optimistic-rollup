@@ -1,15 +1,18 @@
 {
   "compilerOptions": {
     "module": "commonjs",
+    "allowJs": true,
     "esModuleInterop": true,
-    "noImplicitAny": true,
+    "noImplicitAny": false,
     "outDir": "dist",
     "sourceMap": true,
     "baseUrl": ".",
     "declaration": true,
+    "typeRoots": ["src/types", "node_modules/@types"],
     "paths": {
-      "*": ["node_moduels/*", "src/types/*", "test/types/*"]
-    }
+      "*": ["node_modules/*", "src/types/*", "test/types/*"]
+    },
+    "lib": ["es2015"]
   },
-  "exclude": ["node_modules", "test", "dist", "example"]
+  "exclude": ["node_modules", "test", "node_modules/@types/jest", "dist", "example"]
 }

@@ -150,13 +150,10 @@ contract TxChallenge is Challengeable {
             );
         }
         /// Slash if its zk SNARKs verification returns false
-        uint[] memory inputs = new uint[](1 + 4 + 2*transaction.inflow.length + 8*transaction.outflow.length);
+        uint[] memory inputs = new uint[](1 + 1 + 2*transaction.inflow.length + 8*transaction.outflow.length);
         uint index = 0;
         inputs[index++] = uint(transaction.fee);
-        inputs[index++] = transaction.swap.binder[0];
-        inputs[index++] = transaction.swap.binder[1];
-        inputs[index++] = transaction.swap.counterpart[0];
-        inputs[index++] = transaction.swap.counterpart[1];
+        inputs[index++] = transaction.swap;
         for (uint i = 0; i < transaction.inflow.length; i++) {
             inputs[index++] = uint(transaction.inflow[i].inclusionRoot);
             inputs[index++] = uint(transaction.inflow[i].nullifier);
@@ -195,26 +192,15 @@ contract TxChallenge is Challengeable {
         internal
         returns (Challenge memory)
     {
-        AtomicSwap memory swap = _block.body.txs[txIndex].swap;
+        uint swap = _block.body.txs[txIndex].swap;
         uint counterpart;
-        if(swap.binder[0] == 0 && swap.binder[1] == 1) {
-            return Challenge(
-                false,
-                _block.submissionId,
-                _block.header.proposer,
-                "This tx does not have atomic swap"
-            );
-        } else {
-            for(uint i = 0; i < _block.body.txs.length; i++) {
-                if(
-                    swap.binder[0] == _block.body.txs[i].swap.binder[0] &&
-                    swap.binder[1] == _block.body.txs[i].swap.binder[1] &&
-                    swap.counterpart[0] != _block.body.txs[i].swap.counterpart[0] &&
-                    swap.counterpart[1] != _block.body.txs[i].swap.counterpart[1]
-                 ) {
-                    counterpart++;
-                 }
-            }
+        for(uint i = 0; i < _block.body.txs.length; i++) {
+            if(
+                swap == _block.body.txs[i].swap &&
+                i != txIndex
+             ) {
+                counterpart++;
+             }
         }
         return Challenge(
             counterpart != 1,

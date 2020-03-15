@@ -1,6 +1,5 @@
 import { soliditySha3, Hex, toBN } from 'web3-utils';
 
-declare module ZkOpRollUp {}
 export interface MerkleProof {
   root: Hex;
   leaf: Hex;
@@ -23,5 +22,3 @@ export interface MerkleTree {
 }
 
 export interface TxPool {}
-
-export interface ZkTxBuilder {}
