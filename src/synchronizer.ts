@@ -15,7 +15,5 @@ export class FullSynchronizer {
 
   public startSync(): void {}
 
-  private getRecentBlocks() {
-    console.log('hello');
-  }
+  private getRecentBlocks() {}
 }

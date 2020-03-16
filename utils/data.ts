@@ -1,9 +1,11 @@
 // import { ec as EC, eddsa as EdDSA } from 'elliptic';
-import { Hex, toHex, randomHex } from 'web3-utils';
-import semaphore from '../node_modules/semaphore-merkle-tree/ts/index';
+import { toHex, randomHex } from 'web3-utils';
+import semaphore from 'semaphore-merkle-tree';
+import { Field } from '../src/field';
 import { UTXO } from '../src/utxo';
 import { ZkTransaction } from '../src/transaction';
 import { BabyJubjub } from '../src/jubjub';
+import { TokenAddress } from '../src/tokens';
 
 const storage = new semaphore.storage.MemStorage();
 const hasher = new semaphore.hashers.PoseidonHasher();
@@ -13,135 +15,74 @@ const depth = 31;
 
 const merkleTree = new semaphore.tree.MerkleTree(prefix, storage, hasher, depth, defaultValue);
 
-const alicePrivKey: Hex = randomHex(31);
-const alicePubKey: BabyJubjub.Point = BabyJubjub.Point.fromPrivKey(alicePrivKey);
-const bobPrivKey: Hex = randomHex(31);
-const bobPubKey: BabyJubjub.Point = BabyJubjub.Point.fromPrivKey(bobPrivKey);
+export const alicePrivKey: string = "I am Alice's private key";
+export const alicePubKey: BabyJubjub.Point = BabyJubjub.Point.fromPrivKey(alicePrivKey);
+export const bobPrivKey: string = "I am Bob's private key";
+export const bobPubKey: BabyJubjub.Point = BabyJubjub.Point.fromPrivKey(bobPrivKey);
 
-const utxo1_in_1: UTXO = new UTXO({
-  eth: '0x0000000000000000000000000000000000000000000000000000033333333333',
-  salt: '0x94efd282e2450bab4c8b7c977cfd30e3',
-  pubKey: alicePubKey
-});
+export const utxo1_in_1: UTXO = UTXO.newEtherNote(3333, alicePubKey);
+export const utxo1_out_1: UTXO = UTXO.newEtherNote(2221, bobPubKey);
+export const utxo1_out_2: UTXO = UTXO.newEtherNote(1111, alicePubKey);
 
-const utxo1_out_1: UTXO = new UTXO({
-  eth: '0x0000000000000000000000000000000000000000000000000000022222222221',
-  salt: '0xa3b5632e3223cd2ff9ff322a12328caf',
-  pubKey: bobPubKey
-});
+export const utxo2_1_in_1: UTXO = UTXO.newERC20Note(22222333333, TokenAddress.DAI, 8888, alicePubKey);
+export const utxo2_1_out_1: UTXO = UTXO.newERC20Note(22222333332, TokenAddress.DAI, 5555, alicePubKey);
+export const utxo2_1_out_2: UTXO = UTXO.newERC20Note(0, TokenAddress.DAI, 3333, bobPubKey);
 
-const utxo1_out_2: UTXO = new UTXO({
-  eth: '0x0000000000000000000000000000000000000000000000000000011111111111',
-  salt: '0xdc2acd387901234112bc37651aafed21',
-  pubKey: alicePubKey
-});
+export const utxo2_2_in_1: UTXO = UTXO.newNFTNote(
+  77777777777,
+  TokenAddress.CRYPTO_KITTIES,
+  '0x0078917891789178917891789178917891789178917891789178917891789178',
+  bobPubKey
+);
+export const utxo2_2_out_1: UTXO = UTXO.newEtherNote(7777777776, bobPubKey);
+export const utxo2_2_out_2: UTXO = UTXO.newNFTNote(
+  0,
+  TokenAddress.CRYPTO_KITTIES,
+  '0x0078917891789178917891789178917891789178917891789178917891789178',
+  alicePubKey
+);
 
-const utxo2_in_1: UTXO = new UTXO({
-  eth: '0x0000000000000000000000000000000000000000000000000000022222333333',
-  salt: '0xccdeaf231890f23982cdb13973322ae6',
-  token: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-  amount: '0x0000000000000000000088888888888888888888888888888888888888888888',
-  pubKey: alicePubKey
-});
+export const utxo3_in_1: UTXO = UTXO.newEtherNote(1111111111111111111, alicePubKey);
+export const utxo3_in_2: UTXO = UTXO.newEtherNote(2222222222222222222, alicePubKey);
+export const utxo3_in_3: UTXO = UTXO.newEtherNote(3333333333333333333, alicePubKey);
+export const utxo3_out_1: UTXO = UTXO.newEtherNote(6666666666666666665, alicePubKey);
 
-const utxo2_in_2: UTXO = new UTXO({
-  eth: '0x0000000000000000000000000000000000000000000007777777777777777777',
-  salt: '0xccdeaf231890f23982cdb13973322ae6',
-  token: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-  nft: '0x9178917891789178917891789178917891789178917891789178917891789178',
-  pubKey: bobPubKey
-});
-
-const utxo2_out_1: UTXO = new UTXO({
-  eth: '0x0000000000000000000000000000000000000000000000000000022222333332',
-  salt: '0x88888888888888888888888888888888',
-  token: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-  amount: '0x0000000000000000000055555555555555555555555555555555555555555555',
-  pubKey: alicePubKey
-});
-
-const utxo2_out_2: UTXO = new UTXO({
-  eth: '0x00',
-  salt: '0x99999999999999999999999999999999',
-  token: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-  amount: '0x0000000000000000000033333333333333333333333333333333333333333333',
-  pubKey: bobPubKey
-});
-
-const utxo2_out_3: UTXO = new UTXO({
-  eth: '0x00',
-  salt: '0x33333333333333333333333333333333',
-  token: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-  nft: '0x9178917891789178917891789178917891789178917891789178917891789178',
-  pubKey: alicePubKey
-});
-
-const utxo2_out_4: UTXO = new UTXO({
-  eth: '0x0000000000000000000000000000000000000000000007777777777777777776',
-  salt: '0x44444444444444444444444444444444',
-  pubKey: bobPubKey
-});
-
-const utxo3_in_1: UTXO = new UTXO({
-  eth: '0x0000000000000000000000000000000000000000000001111111111111111111',
-  salt: '0x55555555555555555444444444444444',
-  pubKey: alicePubKey
-});
-
-const utxo3_in_2: UTXO = new UTXO({
-  eth: '0x0000000000000000000000000000000000000000000002222222222222222222',
-  salt: '0x33333333333335555444444444444444',
-  pubKey: alicePubKey
-});
-
-const utxo3_in_3: UTXO = new UTXO({
-  eth: '0x0000000000000000000000000000000000000000000003333333333333333333',
-  salt: '0x22222255555555555444444444444444',
-  pubKey: alicePubKey
-});
-
-const utxo3_out_1: UTXO = new UTXO({
-  eth: '0x0000000000000000000000000000000000000000000006666666666666666666',
-  salt: '0x55555555555555555444444447777777',
-  pubKey: alicePubKey
-});
-
-merkleTree.update(0, utxo1_in_1);
-merkleTree.update(1, utxo2_in_1);
-merkleTree.update(2, utxo2_in_2);
+merkleTree.update(0, utxo1_in_1.hash());
+merkleTree.update(1, utxo2_1_in_1.hash());
+merkleTree.update(2, utxo2_2_in_1.hash());
 
 let prevUTXORoot1;
 let prevUTXORoot2;
 (async () => {
   prevUTXORoot1 = await merkleTree.root();
 })();
-merkleTree.update(3, utxo3_in_1);
-merkleTree.update(4, utxo3_in_2);
-merkleTree.update(5, utxo3_in_3);
+merkleTree.update(3, utxo3_in_1.hash());
+merkleTree.update(4, utxo3_in_2.hash());
+merkleTree.update(5, utxo3_in_3.hash());
 (async () => {
   prevUTXORoot2 = await merkleTree.root();
 })();
 
-const tx_1: ZkTransaction = {
-  inflow: [{ nullifier: utxo1_in_1.nullifier(0), root: prevUTXORoot1 }],
+export const tx_1: ZkTransaction = {
+  inflow: [{ nullifier: utxo1_in_1.nullifier(), root: prevUTXORoot1 }],
   outflow: [{ note: utxo1_out_1.hash() }, { note: utxo1_out_2.hash() }],
-  fee: '0x01',
+  fee: Field.from(1),
   proof: { pi_a: [], pi_b: [[]], pi_c: [] }
 };
 
-const tx_2_1: ZkTransaction = {
-  inflow: [{ nullifier: utxo2_in_1.nullifier(1), root: prevUTXORoot1 }],
-  outflow: [{ note: utxo2_out_1.hash() }, { note: utxo2_out_2.hash() }],
-  swap: utxo2_out_3.hash(),
-  fee: '0x01',
+export const tx_2_1: ZkTransaction = {
+  inflow: [{ nullifier: utxo2_1_in_1.nullifier(), root: prevUTXORoot1 }],
+  outflow: [{ note: utxo2_1_out_1.hash() }, { note: utxo2_1_out_2.hash() }],
+  swap: utxo2_2_out_2.hash(),
+  fee: Field.from(1),
   proof: { pi_a: [], pi_b: [[]], pi_c: [] }
 };
 
-const tx_2_2: ZkTransaction = {
-  inflow: [{ nullifier: utxo2_in_2.nullifier(2), root: prevUTXORoot1 }],
-  outflow: [{ note: utxo2_out_3.hash() }, { note: utxo2_out_4.hash() }],
-  swap: utxo2_out_2.hash(),
-  fee: '0x01',
+export const tx_2_2: ZkTransaction = {
+  inflow: [{ nullifier: utxo2_2_in_1.nullifier(), root: prevUTXORoot1 }],
+  outflow: [{ note: utxo2_2_out_1.hash() }, { note: utxo2_2_out_2.hash() }],
+  swap: utxo2_1_out_2.hash(),
+  fee: Field.from(1),
   proof: { pi_a: [], pi_b: [[]], pi_c: [] }
 };
 
