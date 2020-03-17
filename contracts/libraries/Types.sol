@@ -139,8 +139,11 @@ struct Inflow {
 
 struct Outflow {
     uint256 note;
-    PublicData publicData;
+    uint8 outflowType; // 0 = UTXO, 1 = Withdrawal, 2 = Migration
+    PublicData publicData; // Only for withdrawal & migration
 }
+
+enum OutflowType { UTXO, Withdrawal, Migration }
 
 /// Only used for migration
 struct PublicData {
@@ -277,10 +280,6 @@ library Types {
 
     function isUTXO(Outflow memory outflow) internal pure returns (bool) {
         return outflow.publicData.to == address(0);
-    }
-
-    function isWithdrawal(Outflow memory outflow) internal view returns (bool) {
-        return outflow.publicData.to == address(this);
     }
 
     function hash(MassDeposit memory massDeposit) internal pure returns (bytes32) {

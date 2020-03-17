@@ -13,6 +13,7 @@ import {
     MassMigration,
     ERC20Migration,
     ERC721Migration,
+    OutflowType,
     Types
 } from "../../libraries/Types.sol";
 import { Deserializer } from "../../libraries/Deserializer.sol";
@@ -65,7 +66,6 @@ contract MigrationChallenge is Challengeable {
         view
         returns (Challenge memory)
     {
-        require(destination != address(this), "It's a withdrawal");
         MassMigration memory submitted;
         for(uint i = 0; i < _block.body.massMigrations.length; i++) {
             if(destination == _block.body.massMigrations[i].destination) {
@@ -86,7 +86,7 @@ contract MigrationChallenge is Challengeable {
             Transaction memory transaction = _block.body.txs[i];
             for(uint j = 0; j < transaction.outflow.length; j++) {
                 Outflow memory outflow = transaction.outflow[j];
-                if(outflow.publicData.to == destination) {
+                if(outflow.outflowType == uint8(OutflowType.Migration) && outflow.publicData.to == destination) {
                     totalETH += outflow.publicData.eth;
                     massDeposit.fee += outflow.publicData.fee;
                     massDeposit.merged = keccak256(abi.encodePacked(massDeposit.merged, outflow.note));
@@ -104,7 +104,7 @@ contract MigrationChallenge is Challengeable {
             validityOfMassDeposit = false;
         }
         return Challenge(
-            validityOfMassDeposit,
+            !validityOfMassDeposit,
             _block.submissionId,
             _block.header.proposer,
             "Computed mass deposit is different with the submitted"
@@ -120,7 +120,6 @@ contract MigrationChallenge is Challengeable {
         view
         returns (Challenge memory)
     {
-        require(destination != address(this), "It's a withdrawal");
         ERC20Migration memory submitted;
         for(uint i = 0; i < _block.body.massMigrations.length; i++) {
             MassMigration memory massMigration = _block.body.massMigrations[i];
@@ -149,6 +148,7 @@ contract MigrationChallenge is Challengeable {
             for(uint j = 0; j < transaction.outflow.length; j++) {
                 Outflow memory outflow = transaction.outflow[j];
                 if(
+                    outflow.outflowType == uint8(OutflowType.Migration) &&
                     outflow.publicData.to == destination &&
                     outflow.publicData.token == erc20
                 ) {
@@ -174,7 +174,6 @@ contract MigrationChallenge is Challengeable {
         view
         returns (Challenge memory)
     {
-        require(destination != address(this), "It's a withdrawal");
         ERC721Migration memory submitted;
         for(uint i = 0; i < _block.body.massMigrations.length; i++) {
             MassMigration memory massMigration = _block.body.massMigrations[i];
@@ -217,6 +216,7 @@ contract MigrationChallenge is Challengeable {
             for(uint j = 0; j < transaction.outflow.length; j++) {
                 Outflow memory outflow = transaction.outflow[j];
                 if(
+                    outflow.outflowType == uint8(OutflowType.Migration) &&
                     outflow.publicData.to == destination &&
                     outflow.publicData.token == erc721 &&
                     outflow.publicData.nft == tokenId

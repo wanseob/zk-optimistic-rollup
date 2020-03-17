@@ -87,11 +87,12 @@ library Deserializer {
                 for { let j := 0 } lt(j, outflow_len) { j := add(j, 1) } {
                     mstore(p_txs_i_outflow_j, mem_pos)
                     mem_pos, cp := copy_and_move(mem_pos, cp) // note
-                    mstore(mem_pos, add(mem_pos, 0x40)) // public data
-                    mem_pos, cp := partial_copy_and_move(mem_pos, cp, 0x01) // has data
+                    mem_pos, cp := partial_copy_and_move(mem_pos, cp, 0x01) // type
+                    mstore(mem_pos, add(mem_pos, 0x20)) // public data
+                    mem_pos := skip(mem_pos, 1)
                     // init outflow[j].publicData
-                    switch mload(sub(mem_pos, 0x20))
-                    case 0
+                    switch mload(sub(mem_pos, 0x40))
+                    case 0 // utxo
                     {
                         mem_pos := assign_and_move(mem_pos, 0)
                         mem_pos := assign_and_move(mem_pos, 0)
@@ -100,7 +101,7 @@ library Deserializer {
                         mem_pos := assign_and_move(mem_pos, 0)
                         mem_pos := assign_and_move(mem_pos, 0)
                     }
-                    default
+                    default // withdrawal & migration
                     {
                         mem_pos, cp := partial_copy_and_move(mem_pos, cp, 0x14) // to
                         mem_pos, cp := copy_and_move(mem_pos, cp) // eth

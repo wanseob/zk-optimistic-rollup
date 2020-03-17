@@ -12,6 +12,7 @@ import {
     Transaction,
     Outflow,
     MassDeposit,
+    OutflowType,
     Types
 } from "../../libraries/Types.sol";
 import { Deserializer } from "../../libraries/Deserializer.sol";
@@ -195,7 +196,7 @@ contract RollUpChallenge is Challengeable {
         for (uint i = 0; i < _block.body.txs.length; i++) {
             Transaction memory transaction = _block.body.txs[i];
             for(uint j = 0; j < transaction.outflow.length; j++) {
-                if(transaction.outflow[j].isWithdrawal()) {
+                if(transaction.outflow[j].outflowType == uint8(OutflowType.Withdrawal)) {
                     withdrawals[index++] = transaction.outflow[j].withdrawalNote();
                 }
             }
