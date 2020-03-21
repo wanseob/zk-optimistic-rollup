@@ -35,7 +35,7 @@ struct MassDeposit {
 struct MassMigration {
     address destination;
     uint256 totalETH;
-    MassDeposit massDeposit;
+    MassDeposit migratingLeaves;
     ERC20Migration[] erc20;
     ERC721Migration[] erc721;
 }
@@ -295,8 +295,8 @@ library Types {
         packed = abi.encodePacked(
             packed,
             massMigration.destination,
-            massMigration.massDeposit.merged,
-            massMigration.massDeposit.fee
+            massMigration.migratingLeaves.merged,
+            massMigration.migratingLeaves.fee
         );
         for(uint i = 0; i < massMigration.erc20.length; i++) {
             packed = abi.encodePacked(

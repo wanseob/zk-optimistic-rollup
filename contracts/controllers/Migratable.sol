@@ -22,8 +22,8 @@ contract Migratable is Layer2 {
         require(chain.migrations[migrationId], "MassMigration does not exist");
         try Migratable(to).acceptMigration(
             migrationId,
-            migration.massDeposit.merged,
-            migration.massDeposit.fee
+            migration.migratingLeaves.merged,
+            migration.migratingLeaves.fee
         ) {
             // TODO: Handle out of gas due to the push pattern => ex: slash proposer using submissionId?
             // send ETH first

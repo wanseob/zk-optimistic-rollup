@@ -1,4 +1,5 @@
 include "../../node_modules/circomlib/circuits/babyjub.circom";
+include "../../node_modules/circomlib/circuits/comparators.circom";
 include "./token_to_point.circom";
 include "./utils.circom";
 
@@ -10,18 +11,25 @@ template CountSameNFT(n) {
     signal output out;
 
     component counter[n];
+    component nft_exist[n];
     signal intermediates[n+1];
     intermediates[0] <== 0;
     for(var i = 0; i < n; i++) {
-        counter[i] = IfElseThen(2);
+        nft_exist[i] = IsZero();
+        nft_exist[i].in <== comp_nft[i];
+
+        counter[i] = IfElseThen(3);
         counter[i].obj1[0] <== addr;
-        counter[i].obj1[1] <== nft;
         counter[i].obj2[0] <== comp_addr[i];
+        counter[i].obj1[1] <== nft;
         counter[i].obj2[1] <== comp_nft[i];
+        counter[i].obj1[2] <== nft_exist[i].out; // only count the non-zero nfts
+        counter[i].obj2[2] <== 0;
         counter[i].if_v <== intermediates[i] + 1;
         counter[i].else_v <== intermediates[i];
         counter[i].out ==> intermediates[i+1];
     }
+
     out <== intermediates[n];
 }
 
@@ -58,11 +66,10 @@ template NonFungible(n_i, n_o) {
         expected_count_2[i].obj2[0] <== 0;
         expected_count_2[i].if_v <== 0;
         expected_count_2[i].else_v <== 1;
-
-        token_count_2[i] = CountSameNFT(n_o);
+        token_count_2[i] = CountSameNFT(n_i);
         token_count_2[i].addr <== post_token_addr[i];
         token_count_2[i].nft <== post_token_nft[i];
-        for(var j = 0; j < n_o; j++) {
+        for(var j = 0; j < n_i; j++) {
             token_count_2[i].comp_addr[j] <== prev_token_addr[j];
             token_count_2[i].comp_nft[j] <== prev_token_nft[j];
         }

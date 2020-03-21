@@ -81,23 +81,23 @@ contract MigrationChallenge is Challengeable {
             }
         }
         uint totalETH;
-        MassDeposit memory massDeposit;
+        MassDeposit memory migratingLeaves;
         for(uint i = 0; i < _block.body.txs.length; i++) {
             Transaction memory transaction = _block.body.txs[i];
             for(uint j = 0; j < transaction.outflow.length; j++) {
                 Outflow memory outflow = transaction.outflow[j];
                 if(outflow.outflowType == uint8(OutflowType.Migration) && outflow.publicData.to == destination) {
                     totalETH += outflow.publicData.eth;
-                    massDeposit.fee += outflow.publicData.fee;
-                    massDeposit.merged = keccak256(abi.encodePacked(massDeposit.merged, outflow.note));
+                    migratingLeaves.fee += outflow.publicData.fee;
+                    migratingLeaves.merged = keccak256(abi.encodePacked(migratingLeaves.merged, outflow.note));
                 }
             }
         }
         bool validityOfMassDeposit;
         if(
             totalETH == submitted.totalETH &&
-            massDeposit.merged == submitted.massDeposit.merged &&
-            massDeposit.fee == submitted.massDeposit.fee
+            migratingLeaves.merged == submitted.migratingLeaves.merged &&
+            migratingLeaves.fee == submitted.migratingLeaves.fee
         ) {
             validityOfMassDeposit = true;
         } else {

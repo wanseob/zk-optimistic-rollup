@@ -7,7 +7,7 @@ template BranchNode() {
     signal input right;
     signal output parent;
 
-    component hasher = Poseidon(2, 6, 8, 57);   // Constant
+    component hasher = Poseidon(2, 3, 8, 57);   // Constant
     hasher.inputs[0] <== left;
     hasher.inputs[1] <== right;
 
@@ -22,8 +22,6 @@ template InclusionProof(depth) {
     signal private input leaf;
     signal private input path;
     signal private input siblings[depth];
-    /** Outputs */
-    signal output result;
 
     component path_bits = Num2Bits(depth);
     path_bits.in <== path;
