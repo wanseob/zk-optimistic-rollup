@@ -5,24 +5,30 @@ import { BabyJubjub } from './jubjub';
 import { Field } from './field';
 import * as chacha20 from 'chacha20';
 import { getTokenId, getTokenAddress } from './tokens';
+import { PublicData, Outflow } from './transaction';
 
 const poseidonHash = circomlib.poseidon.createHash(6, 8, 57, 'poseidon');
 
 export class UTXO {
   eth: Field;
+  pubKey: BabyJubjub.Point;
   salt: Field;
   token: Field;
   amount: Field;
   nft: Field;
-  pubKey: BabyJubjub.Point;
+  publicData?: {
+    isWithdrawal: boolean;
+    to: Field;
+    fee: Field;
+  };
 
-  constructor(eth: Field, salt: Field, token: Field, amount: Field, nft: Field, pubKey: BabyJubjub.Point) {
+  constructor(eth: Field, salt: Field, token: Field, amount: Field, nft: Field, pubKey: BabyJubjub.Point, migrationTo?: Field) {
     this.eth = eth;
+    this.pubKey = pubKey;
     this.salt = salt;
     this.token = token;
     this.amount = amount;
     this.nft = nft;
-    this.pubKey = pubKey;
   }
 
   static newEtherNote(eth: Hex | Field, pubKey: BabyJubjub.Point, salt?: Field): UTXO {
@@ -40,19 +46,27 @@ export class UTXO {
     return new UTXO(Field.from(eth), salt, Field.from(addr), Field.from(0), Field.from(id), pubKey);
   }
 
+  withdrawTo(to: Field, fee: Field) {
+    this.publicData = { isWithdrawal: true, to, fee };
+  }
+
+  migrateTo(to: Field, fee: Field) {
+    this.publicData = { isWithdrawal: false, to, fee };
+  }
+
   hash(): Field {
-    let firstHash = Field.from(poseidonHash([this.eth.val, this.salt.val, this.token.val, this.amount.val, this.nft.val]));
-    let resultHash = Field.from(poseidonHash([firstHash, this.pubKey.x.val, this.pubKey.y.val]));
+    let firstHash = Field.from(poseidonHash([this.eth.val, this.pubKey.x.val, this.pubKey.y, this.salt.val]));
+    let resultHash = Field.from(poseidonHash([firstHash, this.token.val, this.amount.val, this.nft.val]));
     return resultHash;
   }
 
   nullifier(): Field {
-    return poseidonHash([this.hash(), this.salt.val]);
+    return Field.from(poseidonHash([this.hash(), this.salt.val]));
   }
 
-  encrypt(key: BabyJubjub.Point): Buffer {
+  encrypt(): Buffer {
     let ephemeralSecretKey: Field = Field.from(randomHex(16));
-    let sharedKey: Buffer = key.mul(ephemeralSecretKey).encode();
+    let sharedKey: Buffer = this.pubKey.mul(ephemeralSecretKey).encode();
     let tokenId = getTokenId(this.token);
     let value = this.eth ? this.eth : this.amount ? this.amount : this.nft;
     let secret = [this.salt.toBuffer(16), Field.from(tokenId).toBuffer(1), value.toBuffer(32)];
@@ -60,6 +74,24 @@ export class UTXO {
     let encryptedMemo = Buffer.concat([BabyJubjub.Point.generate(ephemeralSecretKey).encode(), ciphertext]);
     // 32bytes ephemeral pub key + 16 bytes salt + 1 byte token id + 32 bytes value = 81 bytes
     return encryptedMemo;
+  }
+
+  toOutflow(): Outflow {
+    let outflow = {
+      note: this.hash(),
+      outflowType: this.outflowType()
+    };
+    if (this.publicData) {
+      outflow['data'] = {
+        to: this.publicData.to,
+        eth: this.eth,
+        token: this.token,
+        amount: this.amount,
+        nft: this.nft,
+        fee: this.publicData.fee
+      };
+    }
+    return outflow;
   }
 
   toJSON(): string {
@@ -74,6 +106,18 @@ export class UTXO {
         y: this.pubKey.y
       }
     });
+  }
+
+  outflowType(): Field {
+    if (this.publicData) {
+      if (this.publicData.isWithdrawal) {
+        return Field.from(1); // Withdrawal
+      } else {
+        return Field.from(2); // Migration
+      }
+    } else {
+      return Field.from(0); // UTXO
+    }
   }
 
   static fromJSON(data: string): UTXO {

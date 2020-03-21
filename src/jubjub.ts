@@ -29,7 +29,7 @@ export namespace BabyJubjub {
       return BASE8.mul(n);
     }
 
-    static fromPrivKey(key: string): Point {
+    static fromPrivKey(key: string | Buffer): Point {
       let result = circomlib.eddsa.prv2pub(key);
       return Point.from(result[0], result[1]);
     }

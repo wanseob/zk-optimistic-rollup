@@ -30,7 +30,8 @@ export class Field {
 
   toBuffer(n?: number): Buffer {
     if (!this.val.shr(n * 8).isZero()) throw Error('Not enough buffer size');
-    return Buffer.from(padLeft(this.val.toString(16), 2 * n), 'hex');
+    let hex = n ? padLeft(this.val.toString(16), 2 * n) : this.val.toString(16);
+    return Buffer.from(hex, 'hex');
   }
 
   shr(n: number): Field {
@@ -51,5 +52,29 @@ export class Field {
 
   equal(n: Field): boolean {
     return this.val === n.val;
+  }
+
+  add(n: Field): Field {
+    let newVal = this.val + n.val;
+    if (newVal < this.val) {
+      throw Error('Field overflow');
+    }
+    return Field.from(this.val + n.val);
+  }
+
+  sub(n: Field): Field {
+    let newVal = this.val - n.val;
+    if (newVal > this.val) {
+      throw Error('Field underflow');
+    }
+    return Field.from(this.val + n.val);
+  }
+
+  greaterThan(n: Field): boolean {
+    return this.val > n.val;
+  }
+
+  gte(n: Field): boolean {
+    return this.val >= n.val;
   }
 }

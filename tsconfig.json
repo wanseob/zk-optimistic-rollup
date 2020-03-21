@@ -3,6 +3,7 @@
     "module": "commonjs",
     "allowJs": true,
     "esModuleInterop": true,
+    "resolveJsonModule": true,
     "noImplicitAny": false,
     "outDir": "dist",
     "sourceMap": true,

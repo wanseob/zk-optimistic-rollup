@@ -6,13 +6,13 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "compile": "./node_modules/.bin/truffle compile",
-    "circuit": "./node_modules/.bin/circom circuits/zktransfer.circom -o build/zktransfer.json",
+    "circuit": "./node_modules/.bin/circom circuits/impls/zk_transaction_2_2.circom -o build/zktransfer.json",
     "circuitInfo": "./node_modules/.bin/snarkjs info -c build/zktransfer.json",
     "setup": "./node_modules/.bin/snarkjs setup -c build/zktransfer.json --pk build/proving_key.json --vk build/verification_key.json",
     "verifier": "./node_modules/.bin/snarkjs generateverifier --vk build/verification_key.json -v contracts/ZkTransferVerifier.sol",
-    "test": "npm run testSolidity && npm run testTS",
+    "test": "yarn compile && yarn testSolidity && yarn testTS",
     "testSolidity": "./node_modules/.bin/truffle test",
-    "testTS": "mocha -r ts-node/register test/**/*.test.ts --timeout 5000",
+    "testTS": "yarn ts && mocha -r ts-node/register test/**/*.test.ts --timeout 0",
     "ts": "./node_modules/.bin/tsc",
     "prettier": "./node_modules/.bin/prettier --single-quote --write --print-width 160 ./**/*.ts",
     "coverage": "./node_modules/.bin/solidity-coverage",
@@ -22,7 +22,6 @@
   "dependencies": {
     "circom": "^0.0.34",
     "circomlib": "^0.0.21",
-    "snarkjs": "^0.1.20",
     "web3": "^1.2.6",
     "web3-core": "^1.2.6"
   },
@@ -56,16 +55,18 @@
     "prettier": "^1.19.1",
     "semaphore-merkle-tree": "^1.0.12",
     "smt-rollup": "github:wilsonbeam/smt-rollup",
+    "snarkjs": "^0.1.20",
     "solc": "0.5.15",
     "solium": "^1.2.5",
     "truffle": "^5.1.10",
     "truffle-artifactor": "^4.0.30",
     "truffle-typings": "1.0.4",
     "ts-generator": "^0.0.8",
-    "ts-node": "^8.5.0",
+    "ts-node": "^8.7.0",
     "typechain": "^1.0.5",
     "typechain-target-truffle": "^1.0.2",
-    "typescript": "^3.7.2"
+    "typescript": "^3.7.2",
+    "websnark": "^0.0.5"
   },
   "lint-staged": {
     "**/*.{js,jsx,ts,tsx,json,css,scss,md}": [
