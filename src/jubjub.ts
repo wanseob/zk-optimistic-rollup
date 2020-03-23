@@ -16,6 +16,8 @@ export namespace BabyJubjub {
       }
     }
 
+    static zero = Point.from(0, 1);
+
     static from(x: any, y: any) {
       return new Point(Field.from(x), Field.from(y));
     }

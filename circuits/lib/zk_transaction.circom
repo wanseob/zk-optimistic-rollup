@@ -2,10 +2,12 @@ include "./utils.circom";
 include "./inclusion_proof.circom";
 include "./erc20_sum.circom";
 include "./non_fungible.circom";
+include "./note_hash.circom";
+include "./nullifier.circom";
+include "./ownership_proof.circom";
 //include "./atomic_swap_mpc.circom";
 include "../../node_modules/circomlib/circuits/eddsaposeidon.circom";
 include "../../node_modules/circomlib/circuits/comparators.circom";
-include "../../node_modules/circomlib/circuits/poseidon.circom";
 
 /**
  * Note properties
@@ -53,41 +55,37 @@ template ZkTransaction(tree_depth, n_i, n_o) {
 
     /** Constraints */
     /// Calculate spending note hash
-    component poseidon_note_int[n_i];
-    component poseidon_note[n_i];
+    component note_hashes[n_i];
     for(var i = 0; i < n_i; i ++) {
-        poseidon_note_int[i] = Poseidon(4, 6, 8, 57);   // Constant
-        poseidon_note_int[i].inputs[0] <== spending_note[0][i];
-        poseidon_note_int[i].inputs[1] <== spending_note[1][i];
-        poseidon_note_int[i].inputs[2] <== spending_note[2][i];
-        poseidon_note_int[i].inputs[3] <== spending_note[3][i];
-        poseidon_note[i] = Poseidon(4, 6, 8, 57);   // Constant
-        poseidon_note[i].inputs[0] <== poseidon_note_int[i].out;
-        poseidon_note[i].inputs[1] <== spending_note[4][i];
-        poseidon_note[i].inputs[2] <== spending_note[5][i];
-        poseidon_note[i].inputs[3] <== spending_note[6][i];
+        note_hashes[i] = NoteHash();
+        note_hashes[i].eth <== spending_note[0][i];
+        note_hashes[i].pubkey_x <== spending_note[1][i];
+        note_hashes[i].pubkey_y <== spending_note[2][i];
+        note_hashes[i].salt <== spending_note[3][i];
+        note_hashes[i].token_addr <== spending_note[4][i];
+        note_hashes[i].erc20 <== spending_note[5][i];
+        note_hashes[i].nft <== spending_note[6][i];
     }
 
     /// Nullifier proof
     component spending_nullifier[n_i];
     for(var i = 0; i < n_i; i ++) {
-        spending_nullifier[i] = Poseidon(2, 6, 8, 57);   // Constant
-        spending_nullifier[i].inputs[0] <== poseidon_note[i].out; // note hash
-        spending_nullifier[i].inputs[1] <== spending_note[3][i]; // note salt
+        spending_nullifier[i] = Nullifier();   // Constant
+        spending_nullifier[i].note_hash <== note_hashes[i].out; // note hash
+        spending_nullifier[i].note_salt <== spending_note[3][i]; // note salt
         spending_nullifier[i].out === nullifiers[i];
     }
 
     /// Ownership proof
     component ownership_proof[n_i];
     for(var i = 0; i < n_i; i ++) {
-        ownership_proof[i] = EdDSAPoseidonVerifier();
-        ownership_proof[i].enabled <== 1;
-        ownership_proof[i].M <== poseidon_note[i].out;
-        ownership_proof[i].Ax <== spending_note[1][i];
-        ownership_proof[i].Ay <== spending_note[2][i];
-        ownership_proof[i].R8x <== signatures[0][i];
-        ownership_proof[i].R8y <== signatures[1][i];
-        ownership_proof[i].S <== signatures[2][i];
+        ownership_proof[i] = OwnershipProof();
+        ownership_proof[i].note <== note_hashes[i].out;
+        ownership_proof[i].pub_key[0] <== spending_note[1][i];
+        ownership_proof[i].pub_key[1] <== spending_note[2][i];
+        ownership_proof[i].sig[0] <== signatures[0][i];
+        ownership_proof[i].sig[1] <== signatures[1][i];
+        ownership_proof[i].sig[2] <== signatures[2][i];
     }
 
     /// Inclusion proof
@@ -95,7 +93,7 @@ template ZkTransaction(tree_depth, n_i, n_o) {
     for(var i = 0; i < n_i; i ++) {
         inclusion_proof[i] = InclusionProof(tree_depth);
         inclusion_proof[i].root <== inclusion_references[i];
-        inclusion_proof[i].leaf <== poseidon_note[i].out;
+        inclusion_proof[i].leaf <== note_hashes[i].out;
         inclusion_proof[i].path <== note_index[i];
         for(var j = 0; j < tree_depth; j++) {
             inclusion_proof[i].siblings[j] <== siblings[j][i];
@@ -160,8 +158,8 @@ template ZkTransaction(tree_depth, n_i, n_o) {
         public_data[4][i] === revealed_erc721_id[i].out;
     }
 
-    /// Range limitation to prevent overflow
-    var range_limit = 21888242871839275222246405745257275088548364400416034343698204186575808495617 >> 32;
+    /// Range limitation to prevent overflow. Techincal maximum of inputs: 256
+    var range_limit = (0 - 1) >> 8;
     component inflow_eth_range[n_i];
     for(var i = 0; i < n_i; i ++) {
         inflow_eth_range[i] = LessThan(254);

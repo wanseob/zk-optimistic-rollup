@@ -2690,7 +2690,7 @@ elliptic@6.3.3:
     hash.js "^1.0.0"
     inherits "^2.0.1"
 
-elliptic@^6.0.0, elliptic@^6.4.0, elliptic@^6.5.2:
+elliptic@6.5.2, elliptic@^6.0.0, elliptic@^6.4.0, elliptic@^6.5.2:
   version "6.5.2"
   resolved "https://registry.yarnpkg.com/elliptic/-/elliptic-6.5.2.tgz#05c5678d7173c049d8ca433552224a495d0e3762"
   integrity sha512-f4x70okzZbIQl/NSRLkI/+tteV/9WqL98zx+SQ69KbXxmVrmjwsNUPn/gYJJ0sHvEak24cZgHIPegRePAtA/xw==
@@ -3259,6 +3259,21 @@ ethers@^4.0.28:
     uuid "2.0.1"
     xmlhttprequest "1.8.0"
 
+ethers@^4.0.37:
+  version "4.0.46"
+  resolved "https://registry.yarnpkg.com/ethers/-/ethers-4.0.46.tgz#13cd3ed099487f43ece00194b89a8a8781f71507"
+  integrity sha512-/dPMzzpInhtiip4hKFvsDiJKeRk64IhyA+Po7CtNXneQFSOCYXg8eBFt+jXbxUQyApgWnWOtYxWdfn9+CvvxDA==
+  dependencies:
+    aes-js "3.0.0"
+    bn.js "^4.4.0"
+    elliptic "6.5.2"
+    hash.js "1.1.3"
+    js-sha3 "0.5.7"
+    scrypt-js "2.0.4"
+    setimmediate "1.0.4"
+    uuid "2.0.1"
+    xmlhttprequest "1.8.0"
+
 ethjs-unit@0.1.6:
   version "0.1.6"
   resolved "https://registry.yarnpkg.com/ethjs-unit/-/ethjs-unit-0.1.6.tgz#c665921e476e87bce2a9d588a6fe0405b2c41699"
@@ -3293,12 +3308,6 @@ ethlint@^1.2.5:
     solium-plugin-security "0.1.1"
     solparse "2.2.8"
     text-table "^0.2.0"
-
-ethsnarks@HarryR/ethsnarks:
-  version "0.2.0"
-  resolved "https://codeload.github.com/HarryR/ethsnarks/tar.gz/2020dec635ee606da1f66118a5f7c6283a4cb6a0"
-  dependencies:
-    truffle "^5.0.29"
 
 eventemitter3@3.1.2:
   version "3.1.2"
@@ -3820,15 +3829,6 @@ fs-extra@^7.0.0:
     jsonfile "^4.0.0"
     universalify "^0.1.0"
 
-fs-extra@^8.1.0:
-  version "8.1.0"
-  resolved "https://registry.yarnpkg.com/fs-extra/-/fs-extra-8.1.0.tgz#49d43c45a88cd9677668cb7be1b46efdb8d2e1c0"
-  integrity sha512-yhlQgA6mnOJUKOsRUFsgJdQCvkKhcz8tlZG5HBQfReYZy46OwLcY+Zia0mtdHsOo9y/hP+CxMN0TU9QxoOtG4g==
-  dependencies:
-    graceful-fs "^4.2.0"
-    jsonfile "^4.0.0"
-    universalify "^0.1.0"
-
 fs-minipass@^1.2.5:
   version "1.2.7"
   resolved "https://registry.yarnpkg.com/fs-minipass/-/fs-minipass-1.2.7.tgz#ccff8570841e7fe4265693da88936c55aed7f7c7"
@@ -4096,7 +4096,7 @@ got@^7.1.0:
     url-parse-lax "^1.0.0"
     url-to-options "^1.0.1"
 
-graceful-fs@^4.1.10, graceful-fs@^4.1.11, graceful-fs@^4.1.15, graceful-fs@^4.1.2, graceful-fs@^4.1.6, graceful-fs@^4.1.9, graceful-fs@^4.2.0, graceful-fs@^4.2.2:
+graceful-fs@^4.1.10, graceful-fs@^4.1.11, graceful-fs@^4.1.15, graceful-fs@^4.1.2, graceful-fs@^4.1.6, graceful-fs@^4.1.9, graceful-fs@^4.2.2:
   version "4.2.3"
   resolved "https://registry.yarnpkg.com/graceful-fs/-/graceful-fs-4.2.3.tgz#4a12ff1b60376ef09862c2093edd908328be8423"
   integrity sha512-a30VEBm4PEdx1dRB7MFK7BejejvCvBronbLjht+sHuGYj8PHs7M/5Z+rt5lw551vZ7yfTCj4Vuyy3mSJytDWRQ==
@@ -5319,6 +5319,17 @@ libnpmconfig@^1.2.1:
     figgy-pudding "^3.5.1"
     find-up "^3.0.0"
     ini "^1.3.5"
+
+libsemaphore@^1.0.14:
+  version "1.0.14"
+  resolved "https://registry.yarnpkg.com/libsemaphore/-/libsemaphore-1.0.14.tgz#ad2d19bda91a1f414c4b02fd60e918a00e4a93de"
+  integrity sha512-eL7aaGtO51KFufOg3iKnDS4GQLSJiVTywa5eS9dqq+gsneIwopDVkWqC1C4K9qVPKlYL7FLaPSAHHPxOFl5u6g==
+  dependencies:
+    circomlib "0.0.21"
+    ethers "^4.0.37"
+    semaphore-merkle-tree "^1.0.11"
+    snarkjs "0.1.20"
+    websnark "0.0.5"
 
 lines-and-columns@^1.1.6:
   version "1.1.6"
@@ -7533,7 +7544,7 @@ seek-bzip@^1.0.5:
   dependencies:
     commander "~2.8.1"
 
-semaphore-merkle-tree@^1.0.12:
+semaphore-merkle-tree@^1.0.11, semaphore-merkle-tree@^1.0.12:
   version "1.0.12"
   resolved "https://registry.yarnpkg.com/semaphore-merkle-tree/-/semaphore-merkle-tree-1.0.12.tgz#195fc6ab1e7d9a2beb0f184ecdf58ff3e0803236"
   integrity sha512-qYzL7W/eUJChl8XDHMvPgQqZXk65uJEOhk+vShfvtWwHpCsDP5uV8evFzAniwApI6USsYZz0O2bDKmv7mR5eig==
@@ -8461,15 +8472,6 @@ truffle-typings@1.0.4:
     "@types/chai" "^4.1.4"
     "@types/mocha" "^5.2.5"
 
-truffle@^5.0.29:
-  version "5.1.10"
-  resolved "https://registry.yarnpkg.com/truffle/-/truffle-5.1.10.tgz#6866c6f7b88507415eb2d29a9c6c2ab5eba6df2a"
-  integrity sha512-7dkBjNwabpNUp2LTSsXWUk5TMOfomX9F0mPLDEZgAgmfH3qWG5rBEUn/jw5t0LQfVx8NCG+GIN9FxqiUIEWrYQ==
-  dependencies:
-    app-module-path "^2.2.0"
-    mocha "5.2.0"
-    original-require "1.0.1"
-
 truffle@^5.1.10:
   version "5.1.16"
   resolved "https://registry.yarnpkg.com/truffle/-/truffle-5.1.16.tgz#19c5bc6b3e21cdc41266aed30b5650b9665952b8"
@@ -8509,6 +8511,18 @@ ts-node@^8.7.0:
     make-error "^1.1.1"
     source-map-support "^0.5.6"
     yn "3.1.1"
+
+ts-postgres@^1.1.3:
+  version "1.1.3"
+  resolved "https://registry.yarnpkg.com/ts-postgres/-/ts-postgres-1.1.3.tgz#d848d843a9c61445cdc553af5ef8974d13bebd84"
+  integrity sha512-T7Ibw5bZ5Bpf2dH3h44Xp0tigSYnZbgl6DdvJuwQKEOxqFPiTXPZGal+KyCLCNmOgcGOP15iYdbu7J6siMdm8w==
+  dependencies:
+    ts-typed-events "^1.1.1"
+
+ts-typed-events@^1.1.1:
+  version "1.1.1"
+  resolved "https://registry.yarnpkg.com/ts-typed-events/-/ts-typed-events-1.1.1.tgz#9736c79c008cdd61fc536b98a806e85bf25053cf"
+  integrity sha512-jftubiJvjHWcHIFUgLOGB1NjybQwKpAWX1Rb9FeVGw9R6LvqjdBdkowFQUTTjcpaVmmJXXvuwjZFhDuqnr9xQQ==
 
 tslib@^1.9.0:
   version "1.10.0"
@@ -8798,6 +8812,13 @@ verror@1.10.0:
     core-util-is "1.0.2"
     extsprintf "^1.2.0"
 
+wasmbuilder@^0.0.8:
+  version "0.0.8"
+  resolved "https://registry.yarnpkg.com/wasmbuilder/-/wasmbuilder-0.0.8.tgz#f19e175a32ef1e09707e6fbad18f3fd07473ef35"
+  integrity sha512-d63cIsDmHnybA5hTlRRLadgys5r3Tl4W8SbcBRh13FauEPOo48dqjgzdL1xefpZkpKKybDRlFqgm+9cX04B3+w==
+  dependencies:
+    big-integer "^1.6.43"
+
 web3-bzz@1.2.1:
   version "1.2.1"
   resolved "https://registry.yarnpkg.com/web3-bzz/-/web3-bzz-1.2.1.tgz#c3bd1e8f0c02a13cd6d4e3c3e9e1713f144f6f0d"
@@ -8923,7 +8944,7 @@ web3-core@1.2.1:
     web3-core-requestmanager "1.2.1"
     web3-utils "1.2.1"
 
-web3-core@1.2.6, web3-core@^1.2.6:
+web3-core@1.2.6:
   version "1.2.6"
   resolved "https://registry.yarnpkg.com/web3-core/-/web3-core-1.2.6.tgz#bb42a1d7ae49a7258460f0d95ddb00906f59ef92"
   integrity sha512-y/QNBFtr5cIR8vxebnotbjWJpOnO8LDYEAzZjeRRUJh2ijmhjoYk7dSNx9ExgC0UCfNFRoNCa9dGRu/GAxwRlw==
@@ -9273,7 +9294,7 @@ web3-utils@1.2.4, web3-utils@^1.2.1:
     underscore "1.9.1"
     utf8 "3.0.0"
 
-web3-utils@1.2.6:
+web3-utils@1.2.6, web3-utils@^1.2.6:
   version "1.2.6"
   resolved "https://registry.yarnpkg.com/web3-utils/-/web3-utils-1.2.6.tgz#b9a25432da00976457fcc1094c4af8ac6d486db9"
   integrity sha512-8/HnqG/l7dGmKMgEL9JeKPTtjScxOePTzopv5aaKFExPfaBrYRkgoMqhoowCiAl/s16QaTn4DoIF1QC4YsT7Mg==
@@ -9314,7 +9335,7 @@ web3@^1.0.0-beta.55, web3@^1.2.6:
     web3-shh "1.2.6"
     web3-utils "1.2.6"
 
-websnark@^0.0.5:
+websnark@0.0.5, websnark@^0.0.5:
   version "0.0.5"
   resolved "https://registry.yarnpkg.com/websnark/-/websnark-0.0.5.tgz#7327a967f37da9bb7abc1e5c5bc90b6188dea51e"
   integrity sha512-JRJDLYa6GyHgRp7RQmauZBLgClx7OGclEnJLfW2uUyRFYDCBGdgirIH7E2g1s1BR6GUqEBb0uHneqBKvO6Bt9A==

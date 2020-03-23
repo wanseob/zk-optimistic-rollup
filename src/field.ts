@@ -11,13 +11,15 @@ export class Field {
     }
   }
 
+  static zero = Field.from(0);
+
   static from(x: any): Field {
     if (x === undefined) return new Field(BigInt(0));
     else return new Field(x);
   }
 
   static fromBuffer(buff: Buffer): Field {
-    return Field.from(toBN(buff.toString('hex')));
+    return Field.from(toBN('0x' + buff.toString('hex')));
   }
 
   static leInt2Buff(n: BigInt, len: number): Buffer {
@@ -51,7 +53,8 @@ export class Field {
   }
 
   equal(n: Field): boolean {
-    return this.val === n.val;
+    if (n.val) return this.val === n.val;
+    else return this.val === Field.from(n).val;
   }
 
   add(n: Field): Field {
@@ -59,7 +62,7 @@ export class Field {
     if (newVal < this.val) {
       throw Error('Field overflow');
     }
-    return Field.from(this.val + n.val);
+    return Field.from(newVal);
   }
 
   sub(n: Field): Field {
@@ -67,10 +70,11 @@ export class Field {
     if (newVal > this.val) {
       throw Error('Field underflow');
     }
-    return Field.from(this.val + n.val);
+    return Field.from(newVal);
   }
 
   greaterThan(n: Field): boolean {
+    if (!n) return true;
     return this.val > n.val;
   }
 

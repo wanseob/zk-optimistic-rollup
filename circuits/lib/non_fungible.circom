@@ -1,6 +1,5 @@
 include "../../node_modules/circomlib/circuits/babyjub.circom";
 include "../../node_modules/circomlib/circuits/comparators.circom";
-include "./token_to_point.circom";
 include "./utils.circom";
 
 template CountSameNFT(n) {

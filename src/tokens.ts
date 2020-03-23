@@ -1,4 +1,4 @@
-import { Hex, hexToNumber, toHex, padLeft, toChecksumAddress } from 'web3-utils';
+import { hexToNumber, padLeft, toChecksumAddress } from 'web3-utils';
 import { Field } from './field';
 
 export namespace TokenAddress {
@@ -18,12 +18,12 @@ export function getTokenId(addr: Field): number {
   if (id === undefined) {
     id = 0;
   }
-  assert(id < 256, 'Only support maximum 255 number of tokens');
+  if (id >= 256) throw Error('Only support maximum 255 number of tokens');
   return id;
 }
 
 export function getTokenAddress(id: number): Field {
-  assert(id < 256, 'Only support maximum 255 number of tokens');
+  if (id >= 256) throw Error('Only support maximum 255 number of tokens');
   let key = id;
   if (typeof id === 'string') {
     key = hexToNumber(id);

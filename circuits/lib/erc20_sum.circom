@@ -1,5 +1,5 @@
 include "../../node_modules/circomlib/circuits/babyjub.circom";
-include "./token_to_point.circom";
+include "./utils.circom";
 
 template ERC20Sum(n) {
     signal input addr;
